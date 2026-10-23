@@ -26,16 +26,19 @@ Forwarded: no
 
          std::vector<std::string> sizes;
          for (const int size : kSizes)
-@@ -127,6 +138,8 @@
+@@ -127,6 +138,11 @@
              m_general->setCurrentIndex(index);
          if (const int index = indexOf(m_fonts.fixed, m_appearance.fixedFontFamily()); index >= 0)
              m_fixed->setCurrentIndex(index);
++        // Always show the saved family, even while scanning or when language filtering omits it.
++        m_general->setDisplayText(m_appearance.fontFamily());
++        m_fixed->setDisplayText(m_appearance.fixedFontFamily());
 +        m_generalWeight->setCurrentIndex(std::clamp((m_appearance.fontWeight() + 50) / 100, 1, 9) - 1);
 +        m_fixedWeight->setCurrentIndex(std::clamp((m_appearance.fixedFontWeight() + 50) / 100, 1, 9) - 1);
          // The menu marks the default; the box shows only the size.
          const double size = m_appearance.fontPointSize();
          const auto it = std::find(kSizes.begin(), kSizes.end(), size);
-@@ -142,6 +155,8 @@
+@@ -142,6 +158,8 @@
      FontList m_fonts;
      RowComboBox* m_general;
      RowComboBox* m_fixed;
