@@ -251,6 +251,38 @@ Forwarded: no
                  && (screen->showingImage || screen->showingColor);
          screen->node->setGradient(shows ? std::optional<scene::WallpaperNode::Gradient>(
                                                    {m_style.gradientColor, BarBackdrop::kGradientHeight})
+--- /dev/null
++++ b/tests/shell/appearance_capture.h
+@@ -0,0 +1,29 @@
++#pragma once
++
++#include <algorithm>
++#include <cstdlib>
++#include <filesystem>
++#include <string>
++#include "ui/image.h"
++
++// Window::grab currently returns premultiplied pixels for translucent windows,
++// while Image::savePng expects straight alpha. Convert only the test capture.
++inline bool saveAppearanceCapture(cutefish::ui::Image image, const std::string& name)
++{
++    const char* output = std::getenv("CUTEFISH_CAPTURE_DIR");
++    if (!output)
++        return true;
++    for (int y = 0; y < image.height(); ++y) {
++        for (int x = 0; x < image.width(); ++x) {
++            auto color = image.pixel(x, y);
++            if (color.a > 0 && color.a < 255) {
++                color.r = std::min(255, (color.r * 255 + color.a / 2) / color.a);
++                color.g = std::min(255, (color.g * 255 + color.a / 2) / color.a);
++                color.b = std::min(255, (color.b * 255 + color.a / 2) / color.a);
++                image.setPixel(x, y, color);
++            }
++        }
++    }
++    std::filesystem::create_directories(output);
++    return image.savePng(std::string(output) + '/' + name);
++}
 --- a/tests/shell/dock_test.cpp
 +++ b/tests/shell/dock_test.cpp
 @@ -14,6 +14,7 @@
@@ -283,17 +315,16 @@ Forwarded: no
 +}
 --- a/tests/shell/menubar_test.cpp
 +++ b/tests/shell/menubar_test.cpp
-@@ -38,6 +38,9 @@
+@@ -38,6 +38,8 @@
  #include "temporary_directory.h"
  #include "ui/embedded_window.h"
  #include "ui/menu.h"
 +#include "ui/image_view.h"
-+#include <cstdlib>
-+#include <filesystem>
++#include "appearance_capture.h"
  #include "wm/window.h"
  #include "wm/window_manager.h"
 
-@@ -627,3 +630,41 @@
+@@ -627,3 +629,38 @@
      frame();
      EXPECT_TRUE(manager.popupGrabs().empty());
  }
@@ -323,10 +354,7 @@ Forwarded: no
 +            for (int x = 0; x < 46 && x < image.width(); ++x)
 +                ink += image.pixel(x, y).a != 0;
 +        EXPECT_GT(ink, 10);
-+        if (const char* output = std::getenv("CUTEFISH_CAPTURE_DIR")) {
-+            std::filesystem::create_directories(output);
-+            EXPECT_TRUE(image.savePng(std::string(output) + (light ? "/menu-light-ink.png" : "/menu-dark-ink.png")));
-+        }
++        EXPECT_TRUE(saveAppearanceCapture(image, light ? "menu-light-ink.png" : "menu-dark-ink.png"));
 +    }
 +    ui::Image photo(16, 16);
 +    std::fill(photo.bits(), photo.bits() + 256, 0xff445566u);
@@ -337,19 +365,18 @@ Forwarded: no
 +}
 --- a/tests/shell/statusbar_view_test.cpp
 +++ b/tests/shell/statusbar_view_test.cpp
-@@ -20,6 +20,11 @@
+@@ -20,6 +20,10 @@
  #include "compositor/surface.h"
  #include "dbus_test_client.h"
  #include "fake_renderer.h"
-+#include <cstdlib>
-+#include <filesystem>
++#include "appearance_capture.h"
 +#include "ui/theme.h"
 +#include "base/settings.h"
 +#include "core/preferences.h"
  #include "input/input_manager.h"
  #include "input/seat.h"
  #include "loop_test_util.h"
-@@ -127,8 +132,11 @@
+@@ -127,8 +131,11 @@
      shell::StatusBarWindow *bar = nullptr;
      int time = 1000;
 
@@ -361,7 +388,7 @@ Forwarded: no
          shell::setShellDataDirectoryForTesting(CUTEFISH_SOURCE_DIR "/data/shell");
          scene.setSize(kOutput.size());
          manager.setOutputBounds(kOutput);
-@@ -564,3 +572,32 @@
+@@ -564,3 +571,30 @@
      EXPECT_EQ("Save_As", shell::DBusMenuPopup::plainLabel("Save__As"));
      EXPECT_EQ("Tom & Jerry", shell::DBusMenuPopup::plainLabel("Tom & Jerry"));
  }
@@ -382,15 +409,13 @@ Forwarded: no
 +        const ui::Color expected = dark ? ui::Color {28, 28, 30, 220} : ui::Color {246, 246, 246, 210};
 +        const ui::Image image = bar->window()->window()->grab();
 +        const ui::Color actual = image.pixel(5, 2);
-+        EXPECT_NEAR(actual.r, expected.r, 1);
-+        EXPECT_NEAR(actual.g, expected.g, 1);
-+        EXPECT_NEAR(actual.b, expected.b, 1);
++        // grab() retains premultiplied RGB for a translucent window.
++        EXPECT_NEAR(actual.r, expected.r * expected.a / 255.0, 1);
++        EXPECT_NEAR(actual.g, expected.g * expected.a / 255.0, 1);
++        EXPECT_NEAR(actual.b, expected.b * expected.a / 255.0, 1);
 +        EXPECT_EQ(actual.a, expected.a);
 +        EXPECT_EQ(actual, image.pixel(5, image.height() - 3));
-+        if (const char* output = std::getenv("CUTEFISH_CAPTURE_DIR")) {
-+            std::filesystem::create_directories(output);
-+            EXPECT_TRUE(image.savePng(std::string(output) + (dark ? "/bar-dark.png" : "/bar-light.png")));
-+        }
++        EXPECT_TRUE(saveAppearanceCapture(image, dark ? "bar-dark.png" : "bar-light.png"));
 +    }
 +    ui::Theme::setCurrent(saved);
 +}
@@ -434,17 +459,16 @@ Forwarded: no
 +}
 --- a/tests/shell/shell_components_test.cpp
 +++ b/tests/shell/shell_components_test.cpp
-@@ -16,6 +16,9 @@
+@@ -16,6 +16,8 @@
  #include "compositor/surface.h"
  #include "dbus_test_client.h"
  #include "fake_renderer.h"
-+#include <cstdlib>
-+#include <filesystem>
++#include "appearance_capture.h"
 +#include "ui/theme.h"
  #include "input/drag.h"
  #include "input/input_manager.h"
  #include "input/seat.h"
-@@ -220,9 +223,9 @@
+@@ -220,9 +222,9 @@
          return window;
      }
 
@@ -456,7 +480,7 @@ Forwarded: no
          auto dock = std::make_unique<shell::Dock>(nullptr, shell->tasks(), shell->launcher(),
                                                    directory.filePath("shell.conf"),
                                                    std::make_unique<shell::TrashMonitor>(
-@@ -1190,3 +1193,33 @@
+@@ -1190,3 +1192,32 @@
      scene.render(renderer);
      EXPECT_EQ(before, surfaceContainer->children().size());
  }
@@ -476,14 +500,13 @@ Forwarded: no
 +    EXPECT_TRUE(dock->dock().settings().compactSpacing());
 +    EXPECT_GT(dock->panelRect().width(), 37);
 +    const ui::Theme saved = ui::Theme::current();
-+    if (const char* output = std::getenv("CUTEFISH_CAPTURE_DIR")) {
-+        std::filesystem::create_directories(output);
++    if (std::getenv("CUTEFISH_CAPTURE_DIR")) {
 +        for (bool dark : {false, true}) {
 +            ui::Theme::setCurrent(dark ? ui::Theme::dark() : ui::Theme::light());
 +            for (double scale : {1.0, 2.0}) {
 +                dock->window()->window()->setScale(scale);
 +                frame();
-+                EXPECT_TRUE(dock->window()->window()->grab().savePng(std::string(output) + "/dock-"
++                EXPECT_TRUE(saveAppearanceCapture(dock->window()->window()->grab(), std::string("dock-")
 +                        + (dark ? "dark" : "light") + (scale == 1 ? "@1.png" : "@2.png")));
 +            }
 +        }
