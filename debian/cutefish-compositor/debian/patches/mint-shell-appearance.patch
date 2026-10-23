@@ -361,7 +361,7 @@ Forwarded: no
          shell::setShellDataDirectoryForTesting(CUTEFISH_SOURCE_DIR "/data/shell");
          scene.setSize(kOutput.size());
          manager.setOutputBounds(kOutput);
-@@ -564,3 +572,28 @@
+@@ -564,3 +572,32 @@
      EXPECT_EQ("Save_As", shell::DBusMenuPopup::plainLabel("Save__As"));
      EXPECT_EQ("Tom & Jerry", shell::DBusMenuPopup::plainLabel("Tom & Jerry"));
  }
@@ -380,9 +380,13 @@ Forwarded: no
 +        bar->backdrop().setColor(dark ? ui::Color::rgb(0xFFFFFF) : ui::Color::rgb(0x000000));
 +        EXPECT_EQ(bar->lightContents(), dark);
 +        const ui::Color expected = dark ? ui::Color {28, 28, 30, 220} : ui::Color {246, 246, 246, 210};
-+        EXPECT_EQ(bar->window()->window()->backgroundColor(), expected);
 +        const ui::Image image = bar->window()->window()->grab();
-+        EXPECT_EQ(image.pixel(5, 2), image.pixel(5, image.height() - 3));
++        const ui::Color actual = image.pixel(5, 2);
++        EXPECT_NEAR(actual.r, expected.r, 1);
++        EXPECT_NEAR(actual.g, expected.g, 1);
++        EXPECT_NEAR(actual.b, expected.b, 1);
++        EXPECT_EQ(actual.a, expected.a);
++        EXPECT_EQ(actual, image.pixel(5, image.height() - 3));
 +        if (const char* output = std::getenv("CUTEFISH_CAPTURE_DIR")) {
 +            std::filesystem::create_directories(output);
 +            EXPECT_TRUE(image.savePng(std::string(output) + (dark ? "/bar-dark.png" : "/bar-light.png")));
@@ -427,4 +431,62 @@ Forwarded: no
 +    ASSERT_TRUE(test::runUntil([&] { return wallpaper->isJudged(); }));
 +    EXPECT_TRUE(wallpaper->style().gradientVisible); // the legacy verdict still works
 +    EXPECT_FALSE(node()->gradient());              // but the Mint strip needs no gradient
++}
+--- a/tests/shell/shell_components_test.cpp
++++ b/tests/shell/shell_components_test.cpp
+@@ -16,6 +16,9 @@
+ #include "compositor/surface.h"
+ #include "dbus_test_client.h"
+ #include "fake_renderer.h"
++#include <cstdlib>
++#include <filesystem>
++#include "ui/theme.h"
+ #include "input/drag.h"
+ #include "input/input_manager.h"
+ #include "input/seat.h"
+@@ -220,9 +223,9 @@
+         return window;
+     }
+
+-    shell::DockWindow *openDock(const std::string &settings)
++    shell::DockWindow *openDock(const std::string &settings, bool compact = false)
+     {
+-        directory.write("shell.conf", settings);
++        directory.write("shell.conf", settings + "\nCompactSpacing=" + (compact ? "true\n" : "false\n"));
+         auto dock = std::make_unique<shell::Dock>(nullptr, shell->tasks(), shell->launcher(),
+                                                   directory.filePath("shell.conf"),
+                                                   std::make_unique<shell::TrashMonitor>(
+@@ -1190,3 +1193,33 @@
+     scene.render(renderer);
+     EXPECT_EQ(before, surfaceContainer->children().size());
+ }
++
++TEST_F(ShellComponentsTest, CompactDockRendersAtTheUsersIconSize)
++{
++    applications->addSimple("browser", "Browser", "web-browser");
++    applications->addSimple("settings", "Settings", "preferences-system");
++    applications->addSimple("calculator", "Calculator", "accessories-calculator");
++    applications->addSimple("calendar", "Calendar", "x-office-calendar");
++    applications->addSimple("editor", "Editor", "accessories-text-editor");
++    applications->scan();
++    auto* dock = openDock("[Dock]\nIconSize=37\nGlassTint=0.85\nPinned=files, terminal, browser, settings, calculator, calendar, editor\n", true);
++    test::runFor(std::chrono::milliseconds(200));
++    frame();
++    EXPECT_EQ(dock->dock().settings().iconSize(), 37);
++    EXPECT_TRUE(dock->dock().settings().compactSpacing());
++    EXPECT_GT(dock->panelRect().width(), 37);
++    const ui::Theme saved = ui::Theme::current();
++    if (const char* output = std::getenv("CUTEFISH_CAPTURE_DIR")) {
++        std::filesystem::create_directories(output);
++        for (bool dark : {false, true}) {
++            ui::Theme::setCurrent(dark ? ui::Theme::dark() : ui::Theme::light());
++            for (double scale : {1.0, 2.0}) {
++                dock->window()->window()->setScale(scale);
++                frame();
++                EXPECT_TRUE(dock->window()->window()->grab().savePng(std::string(output) + "/dock-"
++                        + (dark ? "dark" : "light") + (scale == 1 ? "@1.png" : "@2.png")));
++            }
++        }
++    }
++    ui::Theme::setCurrent(saved);
 +}
