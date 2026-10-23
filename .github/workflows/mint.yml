@@ -180,6 +180,8 @@ jobs:
             install-test.log
             compositor-test.log
             wayland-info.log
+            calculator-test.log
+            windows-test.json
       - uses: actions/download-artifact@v8
         with:
           pattern: sources-*
@@ -199,7 +201,7 @@ jobs:
           Requires Wayland >= 1.23; built against the 1.24 backport already present on the target Mint PC.
           Keeps LightDM and the existing default session. Choose **Cutefish (Wayland)** at login.
 
-          CI verifies compilation, package installation, runtime library resolution, and preservation of the existing login manager and default desktop. A real GPU/login session still needs testing on the target machine.
+          CI verifies compilation, package installation, runtime library resolution, a calculator window mapped by the headless compositor, and preservation of the existing login manager and default desktop. A real GPU/login session still needs testing on the target machine.
           Source packages and pinned upstream revisions are included for reproducibility and licensing.
           EOF
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \

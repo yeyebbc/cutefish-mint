@@ -54,8 +54,8 @@ metadata, preserving upstream copyright and licensing information.
 The workflow builds inside Ubuntu 24.04 containers, builds the desktop components
 after the shared foundation, then installs the complete bundle in a fresh
 Ubuntu 24.04 container with LightDM and Cinnamon session packages. It checks
-dependencies, missing shared libraries, session files, a real Wayland client
-connecting to the headless compositor, and preservation of the login manager
+dependencies, missing shared libraries, session files, a calculator window
+mapped by the headless compositor, and preservation of the login manager
 and default session. A release is created only after these checks
 pass. Existing component tests run where enabled by upstream packaging.
 

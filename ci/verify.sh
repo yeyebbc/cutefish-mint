@@ -21,13 +21,7 @@ test "$manager_before" = "$(readlink -f /etc/systemd/system/display-manager.serv
 test "$session_before" = "$(readlink -f /etc/alternatives/x-session-manager || true)"
 ! dpkg-query -W -f='${Status}' cutefish-dm 2>/dev/null | grep -q 'install ok installed'
 ! dpkg-query -W -f='${Status}' cutefish-installer 2>/dev/null | grep -q 'install ok installed'
-for binary in /usr/bin/cutefish-* /usr/lib/x86_64-linux-gnu/libcutefish*.so*; do
-  [[ -f "$binary" ]] || continue
-  if ldd "$binary" 2>/dev/null | grep -F 'not found'; then
-    echo "Unresolved runtime library: $binary" >&2
-    exit 1
-  fi
-done
+python3 /work/packaging/ci/link-check.py
 dpkg-query -W -f='${Package} ${Version}\n' 'cutefish-*' 'xdg-desktop-portal-cutefish'
 dbus-run-session -- bash /work/packaging/ci/smoke.sh
 echo 'Clean Ubuntu 24.04 installation, runtime linking, headless compositor, and existing login/session preservation passed.'
