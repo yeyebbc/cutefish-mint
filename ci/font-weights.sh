@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
-# Runs inside CI's private session bus/compositor, with throwaway settings.
+# Runs only in CI's disposable container, on its private session bus/compositor.
 set -Eeuo pipefail
-export XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME
-font_test_home=$(mktemp -d)
-XDG_CONFIG_HOME="$font_test_home/config"
-XDG_DATA_HOME="$font_test_home/data"
-XDG_CACHE_HOME="$font_test_home/cache"
+[[ -f /.dockerenv && -d /work/packaging ]] || {
+  echo 'This test must run in the disposable CI container.' >&2
+  exit 1
+}
+# Toolkit paths currently come from getpwuid(), not the XDG environment.
 services_pid=
 cleanup() {
   if [[ -n "$services_pid" ]]; then
     kill "$services_pid" 2>/dev/null || true
     wait "$services_pid" 2>/dev/null || true
   fi
-  rm -rf "$font_test_home"
 }
 trap cleanup EXIT
 start_services() {
@@ -49,8 +48,8 @@ set_weight setSystemFixedFontWeight 1000
 test "$(get_weight systemFontWeight)" = "i 700"
 test "$(get_weight systemFixedFontWeight)" = "i 500"
 python3 - <<'PY'
-import configparser, os, pathlib
-root=pathlib.Path(os.environ["XDG_CONFIG_HOME"])
+import configparser, os, pathlib, pwd
+root=pathlib.Path(pwd.getpwuid(os.getuid()).pw_dir)/".config"
 config=configparser.ConfigParser()
 config.read(root/"cutefish/services.conf")
 assert config["Appearance"]["FontWeight"] == "700"
