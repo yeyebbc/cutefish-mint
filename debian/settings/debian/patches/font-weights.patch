@@ -69,7 +69,7 @@ Forwarded: no
  add_executable(settings-capture capture.cpp)
 --- /dev/null
 +++ b/tests/ui/fonts_test.cpp
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,79 @@
 +#include <atomic>
 +#include <cstdlib>
 +#include <filesystem>
@@ -132,7 +132,13 @@ Forwarded: no
 +        std::filesystem::create_directories(directory);
 +        const ui::Theme saved = ui::Theme::current();
 +        for (bool dark : {false, true}) {
-+            ui::Theme::setCurrent(dark ? ui::Theme::dark() : ui::Theme::light());
++            ui::Theme theme = dark ? ui::Theme::dark() : ui::Theme::light();
++            theme.fontFamily = "DejaVu Sans";
++            theme.fixedFontFamily = "DejaVu Sans Mono";
++            theme.fontWeight = observer.fontWeight();
++            theme.fixedFontWeight = observer.fixedFontWeight();
++            theme.fontPointSize = 10;
++            ui::Theme::setCurrent(theme);
 +            for (double scale : {1.0, 2.0}) {
 +                window.setScale(scale);
 +                const std::string path = std::string(directory) + "/fonts-" + (dark ? "dark" : "light")

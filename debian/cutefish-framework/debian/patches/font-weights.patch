@@ -4,7 +4,8 @@ Forwarded: no
 
 --- a/clients/appearance/appearance.h
 +++ b/clients/appearance/appearance.h
-@@ -52,5 +52,9 @@
+@@ -51,8 +51,12 @@
+     std::string fontFamily() const;
      void setFontFamily(const std::string& family);
      std::string fixedFontFamily() const;
      void setFixedFontFamily(const std::string& family);
@@ -14,6 +15,8 @@ Forwarded: no
 +    void setFixedFontWeight(int weight);
      // hintStyle: hintnone, hintslight, hintmedium or hintfull.
      void setFontRendering(bool antialias, const std::string& hintStyle);
+
+     std::string iconTheme() const;
 --- a/clients/appearance/appearance.cpp
 +++ b/clients/appearance/appearance.cpp
 @@ -28,7 +28,8 @@

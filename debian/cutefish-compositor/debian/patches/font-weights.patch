@@ -4,7 +4,8 @@ Forwarded: no
 
 --- a/src/shell/shell.cpp
 +++ b/src/shell/shell.cpp
-@@ -12,6 +12,7 @@
+@@ -11,8 +11,9 @@
+
  #include "base/dbus.h"
  #include "base/settings.h"
  #include "core/preferences.h"
@@ -12,7 +13,9 @@ Forwarded: no
  #include "decoration/decoration_theme.h"
  #include "display/display_manager.h"
  #include "shell/common/app_launcher.h"
-@@ -45,6 +46,19 @@
+ #include "shell/common/application_badges.h"
+@@ -44,8 +45,21 @@
+                                                            : settingsPath);
          m_iconTheme = settings.stringValue("Appearance/IconTheme", "Cutefish");
          m_fontFamily = settings.stringValue("Appearance/Font", "");
          m_fontPointSize = settings.doubleValue("Appearance/FontSize", 9);
@@ -32,7 +35,9 @@ Forwarded: no
          if (m_theme)
              m_theme->addObserver(this);
          apply();
-@@ -72,6 +86,9 @@
+     }
+@@ -71,16 +85,24 @@
+         if (accent >= 0 && accent < int(std::size(kAccents)))
              theme.highlight = kAccents[accent];
          theme.iconTheme = m_iconTheme;
          theme.fontFamily = m_fontFamily;
@@ -42,7 +47,8 @@ Forwarded: no
          theme.fontPointSize = m_fontPointSize > 0 ? m_fontPointSize : 9;
          theme.continuousCorners = ui::Theme::current().continuousCorners;
          ui::Theme::setCurrent(theme);
-@@ -80,5 +97,10 @@
+     }
+
      decoration::Theme *m_theme;
      std::string m_iconTheme;
      std::string m_fontFamily;
@@ -53,3 +59,5 @@ Forwarded: no
 +    base::Subscription m_appearanceChanged;
      double m_fontPointSize = 9;
  };
+
+ Shell::Shell(const ShellEnvironment &environment)

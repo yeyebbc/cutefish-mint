@@ -31,7 +31,7 @@ These switches are read at login. No maintainer script rewrites user settings.
 ## Font weights
 
 The small `font-weights.patch` files extend the existing appearance service,
-client, toolkit, Settings page, Qt integration, shell, and text editor. The
+client, toolkit, Settings page, Qt integration, shell, terminal, and text editor. The
 Settings page reuses its existing list rows and combo boxes.
 
 General and fixed fonts each offer Thin (100) through Black (900). The default

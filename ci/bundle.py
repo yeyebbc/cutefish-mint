@@ -14,7 +14,7 @@ for package in sorted((root / "artifacts").rglob("*.deb")):
         if target.exists() and target.read_bytes() != package.read_bytes():
             raise RuntimeError(f"Conflicting package: {package.name}")
         shutil.copy2(package, target)
-for name in ("install.sh", "README.md", "sources.lock"):
+for name in ("install.sh", "README.md", "MINT-PATCHES.md", "sources.lock"):
     shutil.copy2(root / "packaging" / name, bundle / name)
 packages = []
 for path in sorted((bundle / "debs").glob("*.deb")):
