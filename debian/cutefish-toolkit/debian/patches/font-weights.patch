@@ -175,12 +175,11 @@ Forwarded: no
  } // namespace cutefish::ui
 --- /dev/null
 +++ b/tests/font_weight_test.cpp
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,62 @@
 +#include <algorithm>
 +#include <gtest/gtest.h>
 +#include "ui/application.h"
 +#include "ui/label.h"
-+#include "ui/text_context.h"
 +#include "ui/text_layout.h"
 +#include "ui/theme.h"
 +#include "ui/window.h"
@@ -202,6 +201,7 @@ Forwarded: no
 +    Window window;
 +    window.resize({360, 50});
 +    auto label = std::make_unique<Label>("Readable font weight");
++    Label* textLabel = label.get();
 +    window.setContentView(std::move(label));
 +    window.show();
 +    const Image regular = window.grab();
@@ -211,9 +211,13 @@ Forwarded: no
 +    ASSERT_EQ(regular.width(), bold.width());
 +    ASSERT_EQ(regular.height(), bold.height());
 +    EXPECT_FALSE(std::equal(regular.bits(), regular.bits() + regular.width() * regular.height(), bold.bits()));
-+    const auto& text = Application::instance()->text();
-+    EXPECT_EQ(text.style(20, 400, theme.text).getFontStyle().weight(), 700);
-+    EXPECT_EQ(text.style(20, 600, theme.text).getFontStyle().weight(), 600);
++    textLabel->setWeight(600);
++    const Image emphasis = window.grab();
++    theme.fontWeight = 300;
++    Theme::setCurrent(theme);
++    const Image lighterDefault = window.grab();
++    EXPECT_TRUE(std::equal(emphasis.bits(), emphasis.bits() + emphasis.width() * emphasis.height(),
++                           lighterDefault.bits()));
 +}
 +
 +TEST_F(FontWeightTest, FixedWeightIsIndependentAndReachesGlyphMetrics)
@@ -227,9 +231,7 @@ Forwarded: no
 +    const FontSpec fixed = systemFixedFont();
 +    EXPECT_EQ(fixed.weight, 700);
 +    EXPECT_EQ(fixed.family, "DejaVu Sans Mono");
-+    const auto& text = Application::instance()->text();
-+    EXPECT_EQ(text.style(20, 400, theme.text, fixed.family).getFontStyle().weight(), 700);
-+    EXPECT_EQ(text.style(20, 400, theme.text).getFontStyle().weight(), 300);
++    EXPECT_EQ(Theme::current().fontWeight, 300);
 +    TextLayout layout("mmWW0123", fixed);
 +    layout.beginLayout();
 +    ASSERT_GE(layout.createLine(1000, {}), 0);

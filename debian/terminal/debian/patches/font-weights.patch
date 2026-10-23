@@ -1,0 +1,64 @@
+Description: Use the fixed font weight and refresh terminal metrics and cached glyphs when it changes.
+Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
+Forwarded: no
+
+--- a/qmltermwidget/lib/TerminalFont.cpp
++++ b/qmltermwidget/lib/TerminalFont.cpp
+@@ -5,6 +5,7 @@
+
+ #include "TerminalView.h"
+ #include "tools.h"
++#include "ui/theme.h"
+
+ namespace ui = cutefish::ui;
+
+@@ -46,7 +47,7 @@
+
+ ui::FontSpec TerminalFont::spec(int style) const
+ {
+-    return ui::FontSpec{_family, _pointSize, bool(style & Bold), bool(style & Italic)};
++    return ui::FontSpec{_family, _pointSize, bool(style & Bold), bool(style & Italic), ui::Theme::current().fixedFontWeight};
+ }
+
+ CellMetrics TerminalFont::metrics() const
+@@ -81,7 +82,7 @@
+                         std::span<const ui::GlyphCluster> clusters, ui::SizeF stretch, ui::PointF stretchOrigin)
+ {
+     std::unique_ptr<ui::GlyphRenderer>& renderer = _renderers[style & 3];
+-    if (!renderer || renderer->scale() != scale)
++    if (!renderer || renderer->scale() != scale || renderer->font().weight != ui::Theme::current().fixedFontWeight)
+         renderer = std::make_unique<ui::GlyphRenderer>(spec(style), scale);
+     else if (renderer->cachedClusters() > kMaximumCachedClusters)
+         renderer->clearCache();
+--- a/qmltermwidget/lib/TerminalView.h
++++ b/qmltermwidget/lib/TerminalView.h
+@@ -267,6 +267,7 @@
+     std::string _fontFamily = "Monospace";
+     double _fontPointSize = 12;
+     double _metricsScale = 0;
++    int _fontWeight = 400;
+     CellMetrics _metrics;
+     int _lineSpacing = 0;
+     bool _boldIntense = true;
+--- a/qmltermwidget/lib/TerminalView.cpp
++++ b/qmltermwidget/lib/TerminalView.cpp
+@@ -34,6 +34,7 @@
+ #include "ui/drag.h"
+ #include "ui/painter.h"
+ #include "ui/window.h"
++#include "ui/theme.h"
+
+ // Konsole
+ #include "ColorScheme.h"
+@@ -251,9 +252,10 @@
+ void TerminalView::updateFontMetrics()
+ {
+     const double scale = window() ? window()->scale() : 1;
+-    if (_metricsScale == scale)
++    if (_metricsScale == scale && _fontWeight == ui::Theme::current().fixedFontWeight)
+         return;
+     _metricsScale = scale;
++    _fontWeight = ui::Theme::current().fixedFontWeight;
+
+     _font->setFont(_fontFamily, _fontPointSize);
+     _metrics = _font->metrics();
