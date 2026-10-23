@@ -1,0 +1,23 @@
+Description: Cache Skia compiler outputs and bound CI memory usage.
+Author: Cutefish Mint packaging contributors
+Forwarded: not-needed
+
+--- a/cmake/Skia.cmake
++++ b/cmake/Skia.cmake
+@@ -16,6 +16,7 @@
+ set(SKIA_ARGS
+     "is_official_build = true"
+     "is_debug = false"
++    "cc_wrapper = \"ccache\""
+     "cc = \"${SKIA_CC}\""
+     "cxx = \"${SKIA_CXX}\""
+     # Classes derived from Skia types need its typeinfo.
+@@ -58,7 +59,7 @@
+     SOURCE_DIR ${SKIA_SOURCE_DIR}
+     BINARY_DIR ${SKIA_BUILD_DIR}
+     CONFIGURE_COMMAND ${SKIA_GN} gen ${SKIA_BUILD_DIR} --root=${SKIA_SOURCE_DIR}
+-    BUILD_COMMAND ${SKIA_NINJA} -C ${SKIA_BUILD_DIR}
++    BUILD_COMMAND ${SKIA_NINJA} -j4 -C ${SKIA_BUILD_DIR}
+         skia modules/svg modules/skresources modules/skparagraph modules/skshaper
+         modules/skunicode
+     INSTALL_COMMAND ""

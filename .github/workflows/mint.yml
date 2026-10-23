@@ -1,0 +1,172 @@
+name: Build Mint packages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  foundation:
+    name: Toolkit and framework (Noble amd64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: packaging
+      - name: Check out pinned sources
+        run: python3 packaging/ci/checkout.py cutefish-toolkit cutefish-framework
+      - uses: actions/cache@v6
+        with:
+          path: cutefish-toolkit/third_party/skia
+          key: mint-skia-${{ hashFiles('cutefish-toolkit/scripts/fetch-skia.sh') }}
+      - name: Fetch pinned Skia
+        run: cutefish-toolkit/scripts/fetch-skia.sh
+      - uses: actions/cache/restore@v6
+        with:
+          path: .ccache
+          key: noble-foundation-ccache-${{ github.run_id }}
+          restore-keys: noble-foundation-ccache-
+      - name: Build on Ubuntu 24.04
+        run: |
+          set -o pipefail
+          docker run --rm -v "$PWD:/work" -w /work ubuntu:24.04 bash packaging/ci/build.sh foundation 2>&1 | tee foundation.log
+      - name: Fix ownership
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" packaging/out .ccache 2>/dev/null || true
+      - uses: actions/cache/save@v6
+        if: always()
+        with:
+          path: .ccache
+          key: noble-foundation-ccache-${{ github.run_id }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: foundation-log
+          path: foundation.log
+      - uses: actions/upload-artifact@v7
+        with:
+          name: foundation
+          path: |
+            packaging/out/debian/*.deb
+            !packaging/out/debian/*-dbgsym_*
+            !packaging/out/debian/*build-deps*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sources-foundation
+          path: |
+            packaging/out/debian/*.dsc
+            packaging/out/debian/*.tar.*
+            packaging/out/debian/*.buildinfo
+
+  desktop:
+    name: ${{ matrix.project }} (Noble amd64)
+    needs: foundation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [qt-plugins, icons, wallpapers, cutefish-core, filemanager, terminal, xdg-desktop-portal-cutefish, settings, system-monitor, text-editor, video-player, calendar, calculator, cutefish-compositor, cutefish-desktop]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: packaging
+      - name: Check out pinned sources
+        run: python3 packaging/ci/checkout.py '${{ matrix.project }}'
+      - uses: actions/download-artifact@v8
+        with:
+          name: foundation
+          path: foundation
+      - name: Build on Ubuntu 24.04
+        run: |
+          set -o pipefail
+          docker run --rm -v "$PWD:/work" -w /work ubuntu:24.04 bash packaging/ci/build.sh '${{ matrix.project }}' 2>&1 | tee build.log
+      - name: Fix ownership
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" packaging/out 2>/dev/null || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: log-${{ matrix.project }}
+          path: build.log
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.project }}
+          path: |
+            packaging/out/debian/*.deb
+            !packaging/out/debian/*-dbgsym_*
+            !packaging/out/debian/*build-deps*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sources-${{ matrix.project }}
+          path: |
+            packaging/out/debian/*.dsc
+            packaging/out/debian/*.tar.*
+            packaging/out/debian/*.buildinfo
+
+  verify:
+    name: Verify installation and publish bundle
+    needs: [foundation, desktop]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: packaging
+      - uses: actions/download-artifact@v8
+        with:
+          name: foundation
+          path: artifacts/foundation
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: package-*
+          path: artifacts
+      - name: Assemble bundle
+        run: python3 packaging/ci/bundle.py
+      - name: Test clean installation
+        run: |
+          set -o pipefail
+          docker run --rm -v "$PWD:/work" -w /work ubuntu:24.04 bash packaging/ci/verify.sh 2>&1 | tee install-test.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: install-test-log
+          path: install-test.log
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: sources-*
+          path: sources
+      - name: Publish tested build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="mint22-${GITHUB_RUN_NUMBER}"
+          tar -cJf cutefish-mint22-amd64.tar.xz -C bundle .
+          tar -cf cutefish-mint22-sources.tar -C sources .
+          sha256sum cutefish-mint22-amd64.tar.xz cutefish-mint22-sources.tar > SHA256SUMS
+          cat > release-notes.md <<'EOF'
+          Cutefish rebuilt for Linux Mint 22.x / Ubuntu 24.04, amd64.
+
+          Download and extract `cutefish-mint22-amd64.tar.xz`, then run `bash install.sh` inside it.
+          Requires Wayland >= 1.23; built against the 1.24 backport already present on the target Mint PC.
+          Keeps LightDM and the existing default session. Choose **Cutefish (Wayland)** at login.
+
+          CI verifies compilation, package installation, runtime library resolution, and preservation of the existing login manager and default desktop. A real GPU/login session still needs testing on the target machine.
+          Source packages and pinned upstream revisions are included for reproducibility and licensing.
+          EOF
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Cutefish for Mint 22 — build ${GITHUB_RUN_NUMBER}" --prerelease \
+            --notes-file release-notes.md \
+            cutefish-mint22-amd64.tar.xz cutefish-mint22-sources.tar SHA256SUMS install-test.log

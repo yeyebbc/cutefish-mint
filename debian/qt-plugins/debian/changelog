@@ -1,4 +1,4 @@
-cutefish-qt-plugins (1.0-1) UNRELEASED; urgency=medium
+cutefish-qt-plugins (1.0-1+noble1) UNRELEASED; urgency=medium
 
   * Move the packaging to https://github.com/cutefishos/packaging.
   * Version every Cutefish package 1.0.

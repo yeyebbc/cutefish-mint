@@ -1,0 +1,43 @@
+Description: Build against the JPEG XL 0.7 ABI supplied by Ubuntu 24.04.
+Author: Cutefish Mint packaging contributors
+Forwarded: not-needed
+
+--- a/src/ui/jxl_library.cpp
++++ b/src/ui/jxl_library.cpp
+@@ -114,17 +114,17 @@
+     return real ? real(dec, color_encoding) : JXL_DEC_ERROR;
+ }
+ 
+-JxlDecoderStatus JxlDecoderGetICCProfileSize(const JxlDecoder* dec, JxlColorProfileTarget target, size_t* size)
++JxlDecoderStatus JxlDecoderGetICCProfileSize(const JxlDecoder* dec, const JxlPixelFormat* unused_format, JxlColorProfileTarget target, size_t* size)
+ {
+     JXL_FUNCTION(decoderLibrary, JxlDecoderGetICCProfileSize);
+-    return real ? real(dec, target, size) : JXL_DEC_ERROR;
++    return real ? real(dec, unused_format, target, size) : JXL_DEC_ERROR;
+ }
+ 
+-JxlDecoderStatus JxlDecoderGetColorAsICCProfile(const JxlDecoder* dec, JxlColorProfileTarget target,
++JxlDecoderStatus JxlDecoderGetColorAsICCProfile(const JxlDecoder* dec, const JxlPixelFormat* unused_format, JxlColorProfileTarget target,
+                                                 uint8_t* icc_profile, size_t size)
+ {
+     JXL_FUNCTION(decoderLibrary, JxlDecoderGetColorAsICCProfile);
+-    return real ? real(dec, target, icc_profile, size) : JXL_DEC_ERROR;
++    return real ? real(dec, unused_format, target, icc_profile, size) : JXL_DEC_ERROR;
+ }
+ 
+ void* JxlResizableParallelRunnerCreate(const JxlMemoryManager* memory_manager)
+--- a/src/ui/image_decoder.cpp
++++ b/src/ui/image_decoder.cpp
+@@ -341,10 +341,10 @@
+             srgb.rendering_intent = JXL_RENDERING_INTENT_PERCEPTUAL;
+             JxlDecoderSetPreferredColorProfile(decoder.get(), &srgb);
+             size_t iccSize = 0;
+-            if (JxlDecoderGetICCProfileSize(decoder.get(), JXL_COLOR_PROFILE_TARGET_DATA, &iccSize)
++            if (JxlDecoderGetICCProfileSize(decoder.get(), nullptr, JXL_COLOR_PROFILE_TARGET_DATA, &iccSize)
+                 == JXL_DEC_SUCCESS) {
+                 std::vector<uint8_t> icc(iccSize);
+-                if (JxlDecoderGetColorAsICCProfile(decoder.get(), JXL_COLOR_PROFILE_TARGET_DATA, icc.data(),
++                if (JxlDecoderGetColorAsICCProfile(decoder.get(), nullptr, JXL_COLOR_PROFILE_TARGET_DATA, icc.data(),
+                                                    icc.size())
+                     == JXL_DEC_SUCCESS)
+                     profile = SourceProfile::fromIcc(icc.data(), icc.size());

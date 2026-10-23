@@ -1,0 +1,17 @@
+cutefish-calculator
+cutefish-calendar
+cutefish-compositor
+cutefish-core
+cutefish-desktop
+cutefish-filemanager
+cutefish-framework
+cutefish-icon-theme
+cutefish-qt-plugins
+cutefish-settings
+cutefish-system-monitor
+cutefish-terminal
+cutefish-text-editor
+cutefish-toolkit
+cutefish-video-player
+cutefish-wallpapers
+xdg-desktop-portal-cutefish

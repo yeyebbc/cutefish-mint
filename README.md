@@ -1,78 +1,74 @@
-# packaging
+# Cutefish for Linux Mint 22
 
-Distribution packaging for the Cutefish desktop. The project repositories carry
-no packaging of their own; it all lives here.
+An unofficial Ubuntu 24.04 (Noble), amd64 build of the current Cutefish desktop.
+All compilation and Debian packaging run on GitHub Actions. Upstream is
+[cutefishos](https://github.com/cutefishos); this repository adapts its
+[packaging](https://github.com/cutefishos/packaging).
 
-- `versions` lists each project's upstream version.
-- `debian/<project>/debian/` is the `debian/` directory of that project's
-  Debian source package.
-- `arch/` will hold the Arch Linux PKGBUILDs.
-- `iso/` is the live-build configuration of the Debian 13 live ISO.
+## Install
 
-## Debian
+Use a successful [GitHub release](https://github.com/yeyebbc/cutefish-mint/releases).
+Download `cutefish-mint22-amd64.tar.xz` and `SHA256SUMS` into the same directory:
 
-Check out the projects next to this repository, under their repository names:
-
-```
-cutefish-framework/
-cutefish-core/
-...
-packaging/
+```sh
+sha256sum --ignore-missing --check SHA256SUMS
+mkdir cutefish-mint22
+tar -xJf cutefish-mint22-amd64.tar.xz -C cutefish-mint22
+cd cutefish-mint22
+bash install.sh
 ```
 
-Install the build tools, then build:
+The installer checks the OS, CPU architecture, package checksums, and Wayland
+version. It previews the APT transaction and refuses package removals. APT asks
+for confirmation before installing. Log out and choose **Cutefish (Wayland)** at
+the login screen. Choose **Cinnamon** there to return to your existing desktop.
 
-```shell
-sudo apt install devscripts equivs --no-install-recommends
-debian/build.sh --install               # every package, in dependency order
-debian/build.sh cutefish-core settings  # just these
+Target: Linux Mint 22.x / Ubuntu 24.04, amd64, with Wayland >= 1.23. The intended
+Mint 22.3 machine already has `1.24.0-2~24.04.1` from the `3v1n0/gamescope` PPA.
+CI uses that exact backport and pins the PPA to Wayland packages only. The
+installer does not add repositories or replace the system's Wayland packages.
+A stock Noble installation with Wayland 1.22 does not meet this prerequisite.
+
+## What is included
+
+The compositor, session services, toolkit, framework, file manager, settings,
+terminal, calculator, calendar, text editor, video player, system monitor,
+desktop portal, Qt integration, icons, and wallpapers. `expected-packages.txt`
+defines the complete bundle and is checked before publication.
+
+The existing login manager and X11 default session are retained. The standalone
+Cutefish display manager, disk/OS installer, and optional agent-control server
+are not included. Desktop selection is provided by the existing login screen.
+
+Noble adaptations include JPEG XL 0.7 API support and the appropriate runtime
+package name. Sources are pinned in `sources.lock`; source patches live beside
+the Debian packaging. Each release includes Debian source packages and build
+metadata, preserving upstream copyright and licensing information.
+
+## Validation
+
+The workflow builds inside Ubuntu 24.04 containers, builds the desktop components
+after the shared foundation, then installs the complete bundle in a fresh
+Ubuntu 24.04 container with LightDM and Cinnamon session packages. It checks
+dependencies, missing shared libraries, session files, and preservation of the
+login manager and default session. A release is created only after these checks
+pass. Existing component tests run where enabled by upstream packaging.
+
+This is a prerelease port. CI cannot establish that a real GPU, monitor layout,
+or interactive login works on the target PC. Those need a desktop session test.
+
+## Rebuild
+
+Run **Build Mint packages** in the Actions tab. Pushes to `main` also build.
+There is no scheduled build. The workflow needs the standard GitHub Actions
+token; only the final verified-release job has repository contents write access.
+Skia compiler outputs are cached to make fixes less expensive to rebuild.
+
+To remove the added desktop, first log into Cinnamon, then review and run:
+
+```sh
+sudo apt-get remove $(awk '{print $1}' PACKAGES.txt)
 ```
 
-Packages are built in the order of the Build-Depends and Depends in their
-control files. With `--install`, each package's build dependencies are
-installed first and the package itself afterwards, so the next one can build
-against it; without it, those must already be installed.
-
-Each package is built from its checkout's committed HEAD, as a
-`3.0 (quilt)` source package with a `.orig.tar.xz` exported by `git archive`.
-A `debian/<project>/vendor` file names untracked trees of the checkout that go
-into that tarball as well, such as the Skia sources cutefish-toolkit's
-`scripts/fetch-skia.sh` fetches; a line starting with `!` leaves a path out.
-Source and binary packages land in `out/debian/`. With `--snapshot`, each
-package is versioned after its checkout's commit, such as
-`1.0~git20261020120000.1a2b3c4-1`. The `~` puts snapshots before the release
-in `versions`, so it should name the next release, not the last one.
-
-`debian/publish.sh trixie-nightly repo/` lays those packages out as the
-`trixie-nightly` suite of an APT repository under `repo/`; `--sign` signs it
-with the default GnuPG key.
-
-## APT repository
-
-CI builds snapshots of every package each night and publishes them:
-
-```
-sudo curl -fsSLo /etc/apt/keyrings/cutefish.asc https://download.cutefish.org/debian/cutefish.asc
-echo "deb [signed-by=/etc/apt/keyrings/cutefish.asc] https://download.cutefish.org/debian trixie-nightly main" \
-  | sudo tee /etc/apt/sources.list.d/cutefish.list
-sudo apt update
-sudo apt install cutefish-desktop
-```
-
-## ISO
-
-The ISO installs `cutefish-desktop` from download.cutefish.org. CI builds it after
-each package publish; to build it locally, as root:
-
-```shell
-iso/build.sh
-```
-
-## Releasing a version
-
-Change the project's line in `versions` and add a matching entry to its
-`debian/changelog` with `dch`.
-
-## License
-
-Each package's licence is in its `debian/copyright`.
+APT leaves shared dependencies installed. Review any later `autoremove`
+transaction separately.

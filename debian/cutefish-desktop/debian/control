@@ -13,7 +13,6 @@ Depends: cutefish-calculator,
          cutefish-calendar,
          cutefish-compositor,
          cutefish-core,
-         cutefish-dm,
          cutefish-filemanager,
          cutefish-framework,
          cutefish-icon-theme,
@@ -27,11 +26,11 @@ Depends: cutefish-calculator,
          cutefish-wallpapers,
          xdg-desktop-portal-cutefish,
          ${misc:Depends}
-Recommends: cutefish-computer-use,
-            fonts-noto-cjk,
+Recommends: fonts-noto-cjk,
             fonts-noto-color-emoji,
             fonts-noto-core,
             fonts-noto-mono
 Description: Cutefish desktop environment
- This metapackage installs the complete Cutefish desktop: the compositor and
- shell, the display manager, the system components and the applications.
+ This metapackage installs the Cutefish desktop alongside the existing login
+ manager: the compositor and
+ shell, the system components and the applications.

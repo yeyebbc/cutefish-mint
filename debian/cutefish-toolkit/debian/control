@@ -35,7 +35,7 @@ Package: cutefish-toolkit
 Architecture: any
 Depends: ${misc:Depends},
          ${shlibs:Depends}
-Recommends: libjxl0.11
+Recommends: libjxl0.7
 Description: Cutefish UI toolkit
  The toolkit every Cutefish application is built with: a Wayland client for
  cutefish-compositor that draws with Skia on GLES, with retained views, text
