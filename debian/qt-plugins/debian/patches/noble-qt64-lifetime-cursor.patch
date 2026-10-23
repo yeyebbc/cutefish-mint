@@ -1,0 +1,66 @@
+Description: Use Qt 6.4 cursor configuration and guard Flickable destruction.
+Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
+Forwarded: not-needed
+
+--- a/platformtheme/hintsettings.cpp
++++ b/platformtheme/hintsettings.cpp
+@@ -180,10 +180,13 @@
+     m_settings->sync();
+     const auto theme = m_settings->value("CursorTheme", "default").toString();
+     const int size = qBound(16, m_settings->value("CursorSize", 24).toInt(), 64);
+-    if (m_hints.value(QPlatformTheme::MouseCursorTheme) == theme
+-        && m_hints.value(QPlatformTheme::MouseCursorSize) == QSize(size, size))
++    if (m_cursorTheme == theme && m_cursorSize == size)
+         return;
+-    m_hints[QPlatformTheme::MouseCursorTheme] = theme;
+-    m_hints[QPlatformTheme::MouseCursorSize] = QSize(size, size);
++    m_cursorTheme = theme;
++    m_cursorSize = size;
++    // Qt 6.4 reads the cursor configuration from these environment variables.
++    // It has no MouseCursorTheme/MouseCursorSize platform-theme hints.
++    qputenv("XCURSOR_THEME", theme.toUtf8());
++    qputenv("XCURSOR_SIZE", QByteArray::number(size));
+     emit cursorThemeChanged();
+ }
+--- a/platformtheme/hintsettings.h
++++ b/platformtheme/hintsettings.h
+@@ -52,6 +52,8 @@
+     QVariantMap m_values;
+ 
+     QString m_iconTheme;
++    QString m_cursorTheme;
++    int m_cursorSize = 0;
+ };
+ 
+ #endif // HINTSSETTINGS_H
+--- a/scrolling/flickablescroller.cpp
++++ b/scrolling/flickablescroller.cpp
+@@ -33,6 +33,7 @@
+ FlickableScroller::FlickableScroller(QQuickFlickable *flickable)
+     : Scroller(flickable)
+     , m_flickable(flickable)
++    , m_lifetimeGuard(flickable)
+ {
+     setWindow(flickable->window());
+     connect(flickable, &QQuickItem::windowChanged, this, [this](QQuickWindow *window) {
+@@ -115,7 +116,9 @@
+ bool FlickableScroller::isViewAlive() const
+ {
+     // A Flickable in ~QQuickItem has lost its Flickable part and cannot be scrolled.
+-    return m_flickable && !QQuickItemPrivate::get(m_flickable.data())->inDestructor;
++    // Cast from QObject: during the base destructor its metaobject no longer
++    // describes a Flickable, even though a QPointer has not yet been cleared.
++    return qobject_cast<QQuickFlickable *>(m_lifetimeGuard.data()) != nullptr;
+ }
+ 
+ } // namespace Cutefish
+--- a/scrolling/flickablescroller.h
++++ b/scrolling/flickablescroller.h
+@@ -31,6 +31,7 @@
+ 
+ private:
+     QPointer<QQuickFlickable> m_flickable;
++    QPointer<QObject> m_lifetimeGuard;
+ };
+ 
+ } // namespace Cutefish

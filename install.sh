@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Install the CI-built bundle on Linux Mint 22.x / Ubuntu 24.04, amd64.
 set -Eeuo pipefail
+mode=${1:-install}
+if [[ "$mode" != install && "$mode" != --check ]] || (( $# > 1 )); then
+  echo 'Usage: bash install.sh [--check]' >&2
+  exit 2
+fi
 cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 source /etc/os-release
 if [[ "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}" != noble ]] \
@@ -16,8 +21,12 @@ for library in libwayland-client0 libwayland-server0; do
     exit 1
   fi
 done
-mapfile -t packages < <(find debs -maxdepth 1 -type f -name '*.deb' -printf './%p\n' | sort)
+mapfile -t packages < <(awk '$2 ~ /^debs\/[^/]+\.deb$/ {print "./" $2}' SHA256SUMS)
 (( ${#packages[@]} > 0 )) || { echo 'No packages found.' >&2; exit 1; }
+if [[ "$mode" == --check ]]; then
+  apt-get --simulate --no-remove install "${packages[@]}"
+  exit
+fi
 sudo apt-get update
 sudo apt-get --simulate --no-remove install "${packages[@]}"
 sudo apt-get --no-remove install "${packages[@]}"

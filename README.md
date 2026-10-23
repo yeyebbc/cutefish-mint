@@ -22,6 +22,7 @@ The installer checks the OS, CPU architecture, package checksums, and Wayland
 version. It previews the APT transaction and refuses package removals. APT asks
 for confirmation before installing. Log out and choose **Cutefish (Wayland)** at
 the login screen. Choose **Cinnamon** there to return to your existing desktop.
+Run `bash install.sh --check` for a read-only dependency simulation without sudo.
 
 Target: Linux Mint 22.x / Ubuntu 24.04, amd64, with Wayland >= 1.23. The intended
 Mint 22.3 machine already has `1.24.0-2~24.04.1` from the `3v1n0/gamescope` PPA.
@@ -40,8 +41,10 @@ The existing login manager and X11 default session are retained. The standalone
 Cutefish display manager, disk/OS installer, and optional agent-control server
 are not included. Desktop selection is provided by the existing login screen.
 
-Noble adaptations include JPEG XL 0.7 API support, Qt 6.4 native Wayland and
-appearance interfaces, and the appropriate runtime package names.
+Noble adaptations include JPEG XL 0.7, Qt 6.4, PipeWire 1.0, libssh 0.10,
+kernel headers, keyboard constants, and the appropriate runtime package names.
+Qt applications may need restarting after a cursor-theme change with Qt 6.4.
+SFTP transfers use libssh's synchronous API on Noble.
 Sources are pinned in `sources.lock`; source patches live beside
 the Debian packaging. Each release includes Debian source packages and build
 metadata, preserving upstream copyright and licensing information.

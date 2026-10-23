@@ -1,0 +1,77 @@
+Description: Use stable SFTP APIs with Noble libssh 0.10, preserving partial I/O.
+Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
+Forwarded: not-needed
+
+--- a/mountd/sftpbackend.cpp
++++ b/mountd/sftpbackend.cpp
+@@ -246,6 +246,7 @@
+ 
+     m_readChunk = kChunk;
+     m_writeChunk = kChunk;
++#if LIBSSH_VERSION_INT >= SSH_VERSION_INT(0, 11, 0)
+     if (sftp_limits_t limits = sftp_limits(m_sftp)) {
+         if (limits->max_read_length)
+             m_readChunk = std::min<size_t>(kChunk, limits->max_read_length);
+@@ -253,6 +254,7 @@
+             m_writeChunk = std::min<size_t>(kChunk, limits->max_write_length);
+         sftp_limits_free(limits);
+     }
++#endif
+ 
+     if (char *home = sftp_canonicalize_path(m_sftp, ".")) {
+         m_home = home;
+@@ -366,6 +368,7 @@
+     if (sftp_seek64(file->file, offset) < 0)
+         return error();
+ 
++#if LIBSSH_VERSION_INT >= SSH_VERSION_INT(0, 11, 0)
+     struct Request
+     {
+         sftp_aio aio;
+@@ -408,6 +411,20 @@
+     }
+ 
+     return done ? int(done) : failure;
++#else
++    // Noble's libssh 0.10 uses the stable blocking SFTP API.
++    size_t done = 0;
++    while (done < size) {
++        const ssize_t count = sftp_read(file->file, buffer + done,
++                                       std::min(size - done, m_readChunk));
++        if (count < 0)
++            return done ? int(done) : error();
++        if (count == 0)
++            break;
++        done += size_t(count);
++    }
++    return int(done);
++#endif
+ }
+ 
+ int SftpBackend::write(uint64_t handle, const char *buffer, size_t size, off_t offset)
+@@ -423,6 +440,7 @@
+     if (sftp_seek64(file->file, offset) < 0)
+         return error();
+ 
++#if LIBSSH_VERSION_INT >= SSH_VERSION_INT(0, 11, 0)
+     std::vector<std::pair<sftp_aio, size_t>> requests;
+     for (size_t sent = 0; sent < size;) {
+         sftp_aio aio = nullptr;
+@@ -448,6 +466,17 @@
+     }
+ 
+     return failure && !done ? failure : int(done);
++#else
++    size_t done = 0;
++    while (done < size) {
++        const ssize_t count = sftp_write(file->file, buffer + done,
++                                        std::min(size - done, m_writeChunk));
++        if (count <= 0)
++            return done ? int(done) : error();
++        done += size_t(count);
++    }
++    return int(done);
++#endif
+ }
+ 
+ int SftpBackend::release(uint64_t handle)

@@ -1,0 +1,155 @@
+Description: Support PipeWire 1.0 without submitting failed capture buffers.
+Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
+Forwarded: not-needed
+
+--- a/src/screencaststream.cpp
++++ b/src/screencaststream.cpp
+@@ -7,6 +7,7 @@
+ #include "base/logging.h"
+ 
+ #include <algorithm>
++#include <utility>
+ #include <dirent.h>
+ #include <drm_fourcc.h>
+ #include <ext-image-copy-capture-v1-client-protocol.h>
+@@ -16,7 +17,7 @@
+ #include <spa/buffer/meta.h>
+ #include <spa/param/video/format-utils.h>
+ #include <spa/pod/builder.h>
+-#include <spa/pod/dynamic.h>
++#include "pipewiredynamic.h"
+ #include <spa/utils/result.h>
+ #include <sys/mman.h>
+ #include <sys/stat.h>
+@@ -213,6 +214,8 @@
+         pw_stream_destroy(m_stream);
+         m_stream = nullptr;
+     }
++    m_current = nullptr;
++    m_reusable = nullptr;
+     delete m_listener;
+     m_listener = nullptr;
+ }
+@@ -623,6 +626,8 @@
+ void ScreenCastStream::removeBuffer(pw_buffer *buffer)
+ {
+     auto *entry = static_cast<Buffer *>(buffer->user_data);
++    if (buffer == m_reusable)
++        m_reusable = nullptr;
+     if (buffer == m_current) {
+         if (m_session)
+             m_session->cancel();
+@@ -642,7 +647,8 @@
+     if (m_finished || !m_streaming || m_current || m_throttle.isActive() || !m_session
+         || m_session->capturing())
+         return;
+-    m_current = pw_stream_dequeue_buffer(m_stream);
++    m_current = m_reusable ? std::exchange(m_reusable, nullptr)
++                           : pw_stream_dequeue_buffer(m_stream);
+     const int interval = 1000 / std::max(m_framerate, 1);
+     if (!m_current) {
+         // Every buffer is with the consumer; look again after one frame period.
+@@ -754,17 +760,16 @@
+     m_throttle.start(std::chrono::milliseconds(1000 / std::max(m_framerate, 1)));
+ }
+ 
+-// Hands an unfilled buffer back for the next dequeue. Queuing it instead
+-// would submit it as output: with the stream driving the graph nothing
+-// consumes it until the next trigger, and after enough failures every buffer
+-// sits in that queue and none can be dequeued.
++// PipeWire 1.0 has no pw_stream_return_buffer. Retain the single unfilled
++// buffer locally for the next capture instead of submitting an invalid frame.
++// removeBuffer() clears it if renegotiation or disconnect removes the buffer.
+ void ScreenCastStream::returnCurrent()
+ {
+     if (!m_current)
+         return;
+     if (m_session)
+         m_session->cancel();
+-    pw_stream_return_buffer(m_stream, m_current);
++    m_reusable = m_current;
+     m_current = nullptr;
+ }
+ 
+--- a/src/screencaststream.h
++++ b/src/screencaststream.h
+@@ -100,6 +100,7 @@
+     int m_framerate = 0;
+     uint64_t m_sequence = 0;
+     pw_buffer *m_current = nullptr;
++    pw_buffer *m_reusable = nullptr;
+     std::vector<Buffer *> m_buffers;
+     cutefish::base::ElapsedTimer m_lastCapture;
+     cutefish::base::Timer m_throttle;
+--- /dev/null
++++ b/src/pipewiredynamic.h
+@@ -0,0 +1,69 @@
++// PipeWire 1.0.5 dynamic builder, with a C++20-compatible initializer.
++// Source: https://github.com/PipeWire/pipewire/blob/1.0.5/spa/include/spa/pod/dynamic.h
++/* Simple Plugin API */
++/* SPDX-FileCopyrightText: Copyright © 2018 Wim Taymans */
++/* SPDX-License-Identifier: MIT */
++
++#ifndef SPA_POD_DYNAMIC_H
++#define SPA_POD_DYNAMIC_H
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#include <spa/pod/builder.h>
++#include <spa/utils/cleanup.h>
++
++struct spa_pod_dynamic_builder {
++	struct spa_pod_builder b;
++	void *data;
++	uint32_t extend;
++	uint32_t _padding;
++};
++
++static int spa_pod_dynamic_builder_overflow(void *data, uint32_t size)
++{
++	struct spa_pod_dynamic_builder *d = (struct spa_pod_dynamic_builder*)data;
++	int32_t old_size = d->b.size;
++	int32_t new_size = SPA_ROUND_UP_N(size, d->extend);
++	void *old_data = d->b.data, *new_data;
++
++	if (old_data == d->data)
++		d->b.data = NULL;
++	if ((new_data = realloc(d->b.data, new_size)) == NULL)
++		return -errno;
++	if (old_data == d->data && new_data != old_data && old_size > 0)
++		memcpy(new_data, old_data, old_size);
++	d->b.data = new_data;
++	d->b.size = new_size;
++        return 0;
++}
++
++static inline void spa_pod_dynamic_builder_init(struct spa_pod_dynamic_builder *builder,
++		void *data, uint32_t size, uint32_t extend)
++{
++	static const struct spa_pod_builder_callbacks spa_pod_dynamic_builder_callbacks = {
++		.version = SPA_VERSION_POD_BUILDER_CALLBACKS,
++		.overflow = spa_pod_dynamic_builder_overflow
++	};
++	builder->b = SPA_POD_BUILDER_INIT(data, size);
++	spa_pod_builder_set_callbacks(&builder->b, &spa_pod_dynamic_builder_callbacks, builder);
++	builder->extend = extend;
++	builder->data = data;
++}
++
++static inline void spa_pod_dynamic_builder_clean(struct spa_pod_dynamic_builder *builder)
++{
++	if (builder->data != builder->b.data)
++		free(builder->b.data);
++}
++
++SPA_DEFINE_AUTO_CLEANUP(spa_pod_dynamic_builder, struct spa_pod_dynamic_builder, {
++	spa_pod_dynamic_builder_clean(thing);
++})
++
++#ifdef __cplusplus
++}  /* extern "C" */
++#endif
++
++#endif /* SPA_POD_DYNAMIC_H */

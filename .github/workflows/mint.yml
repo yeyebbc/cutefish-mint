@@ -92,19 +92,39 @@ jobs:
         with:
           path: packaging
           persist-credentials: false
+      - name: Reuse matching component package
+        id: component-cache
+        uses: actions/cache@v6
+        with:
+          path: packaging/out/debian
+          key: noble-${{ matrix.project }}-${{ hashFiles('packaging/sources.lock', format('packaging/debian/{0}/**', matrix.project), 'packaging/debian/cutefish-toolkit/**', 'packaging/debian/cutefish-framework/**', 'packaging/ci/build.sh', 'packaging/ci/wayland.sh', 'packaging/debian/build.sh') }}
       - name: Check out pinned sources
+        if: steps.component-cache.outputs.cache-hit != 'true'
         run: python3 packaging/ci/checkout.py '${{ matrix.project }}'
       - uses: actions/download-artifact@v8
+        if: steps.component-cache.outputs.cache-hit != 'true'
         with:
           name: foundation
           path: foundation
+      - uses: actions/cache/restore@v6
+        if: steps.component-cache.outputs.cache-hit != 'true'
+        with:
+          path: .ccache
+          key: noble-${{ matrix.project }}-ccache-${{ github.run_id }}
+          restore-keys: noble-${{ matrix.project }}-ccache-
       - name: Build on Ubuntu 24.04
+        if: steps.component-cache.outputs.cache-hit != 'true'
         run: |
           set -o pipefail
           docker run --rm -v "$PWD:/work" -w /work ubuntu:24.04 bash packaging/ci/build.sh '${{ matrix.project }}' 2>&1 | tee build.log
       - name: Fix ownership
         if: always()
-        run: sudo chown -R "$(id -u):$(id -g)" packaging/out 2>/dev/null || true
+        run: sudo chown -R "$(id -u):$(id -g)" packaging/out .ccache 2>/dev/null || true
+      - uses: actions/cache/save@v6
+        if: always() && steps.component-cache.outputs.cache-hit != 'true'
+        with:
+          path: .ccache
+          key: noble-${{ matrix.project }}-ccache-${{ github.run_id }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:

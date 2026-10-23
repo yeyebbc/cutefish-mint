@@ -1,0 +1,26 @@
+Description: Restore four stable keysym constants missing from Noble headers.
+Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
+Forwarded: not-needed
+
+--- a/qmltermwidget/lib/KeyCodes.cpp
++++ b/qmltermwidget/lib/KeyCodes.cpp
+@@ -323,6 +323,19 @@
+     {XKB_KEY_dead_small_schwa, Key_Dead_Small_Schwa},
+     {XKB_KEY_dead_capital_schwa, Key_Dead_Capital_Schwa},
+     {XKB_KEY_dead_greek, Key_Dead_Greek},
++// These stable keysyms were omitted from libxkbcommon 1.6 headers.
++#ifndef XKB_KEY_dead_lowline
++#define XKB_KEY_dead_lowline 0xfe90
++#endif
++#ifndef XKB_KEY_dead_aboveverticalline
++#define XKB_KEY_dead_aboveverticalline 0xfe91
++#endif
++#ifndef XKB_KEY_dead_belowverticalline
++#define XKB_KEY_dead_belowverticalline 0xfe92
++#endif
++#ifndef XKB_KEY_dead_longsolidusoverlay
++#define XKB_KEY_dead_longsolidusoverlay 0xfe93
++#endif
+     {XKB_KEY_dead_lowline, Key_Dead_Lowline},
+     {XKB_KEY_dead_aboveverticalline, Key_Dead_Aboveverticalline},
+     {XKB_KEY_dead_belowverticalline, Key_Dead_Belowverticalline},
