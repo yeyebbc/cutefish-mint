@@ -30,6 +30,7 @@ test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 timeout 20s wayland-info > /work/wayland-info.log
 grep -q 'xdg_wm_base' /work/wayland-info.log
 grep -q 'wl_output' /work/wayland-info.log
+bash /work/packaging/ci/font-weights.sh
 cutefish-calculator > /work/calculator-test.log 2>&1 &
 calculator_pid=$!
 window_ready=false

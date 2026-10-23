@@ -1,0 +1,247 @@
+Description: Apply independent general and fixed font weights to native text rendering.
+Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
+Forwarded: no
+
+--- a/src/ui/theme.h
++++ b/src/ui/theme.h
+@@ -38,6 +38,9 @@
+     std::string fontFamily;
+     // The appearance's fixed-pitch family; empty for the platform's default.
+     std::string fixedFontFamily;
++    // OpenType/CSS weights, 100..900; 400 is regular.
++    int fontWeight = 400;
++    int fixedFontWeight = 400;
+     double fontPointSize = 9;
+     std::string iconTheme = "Cutefish";
+     // The compositor's window corners on large panels.
+--- a/src/ui/theme.cpp
++++ b/src/ui/theme.cpp
+@@ -46,7 +46,9 @@
+
+ void Theme::setCurrent(const Theme& theme)
+ {
+-    const bool fontChanged = theme.fontFamily != s_current.fontFamily;
++    const bool fontChanged = theme.fontFamily != s_current.fontFamily
++            || theme.fixedFontFamily != s_current.fixedFontFamily
++            || theme.fontWeight != s_current.fontWeight || theme.fixedFontWeight != s_current.fixedFontWeight;
+     s_current = theme;
+     if (Application* application = Application::instance(); application && fontChanged)
+         application->fontsChanged();
+--- a/src/ui/appearance.cpp
++++ b/src/ui/appearance.cpp
+@@ -97,6 +97,8 @@
+ {
+     bool dark = Theme::current().darkMode;
+     int accent = 0;
++    int fontWeight = Theme::current().fontWeight;
++    int fixedFontWeight = Theme::current().fixedFontWeight;
+     double pointSize = Theme::current().fontPointSize;
+     std::string family = Theme::current().fontFamily;
+     std::string fixedFamily = Theme::current().fixedFontFamily;
+@@ -126,6 +128,10 @@
+             sd_bus_message_read(reply, "i", &value);
+             if (key == "accentColor")
+                 accent = value;
++            else if (key == "systemFontWeight" && value >= 100 && value <= 900)
++                fontWeight = value;
++            else if (key == "systemFixedFontWeight" && value >= 100 && value <= 900)
++                fixedFontWeight = value;
+         } else if (type == "d") {
+             double value = 0;
+             sd_bus_message_read(reply, "d", &value);
+@@ -151,6 +157,8 @@
+     Theme theme = dark ? Theme::dark() : Theme::light();
+     if (accent >= 0 && accent < int(std::size(kAccents)))
+         theme.highlight = kAccents[accent];
++    theme.fontWeight = fontWeight;
++    theme.fixedFontWeight = fixedFontWeight;
+     theme.fontPointSize = pointSize;
+     theme.fontFamily = family;
+     theme.fixedFontFamily = fixedFamily;
+--- a/src/ui/text_context.cpp
++++ b/src/ui/text_context.cpp
+@@ -482,6 +482,8 @@
+ {
+     const Theme& theme = Theme::current();
+     const std::string& themeFamily = theme.fontFamily.empty() ? m_family : theme.fontFamily;
++    if (weight == 400)
++        weight = !family.empty() && family == theme.fixedFontFamily ? theme.fixedFontWeight : theme.fontWeight;
+     skia::textlayout::TextStyle style;
+     if (family.empty())
+         style.setFontFamilies({SkString(themeFamily.c_str())});
+@@ -502,6 +504,8 @@
+ {
+     const Theme& theme = Theme::current();
+     const std::string& themeFamily = theme.fontFamily.empty() ? m_family : theme.fontFamily;
++    if (weight == 400)
++        weight = !family.empty() && family == theme.fixedFontFamily ? theme.fixedFontWeight : theme.fontWeight;
+     const SkFontStyle style(weight, SkFontStyle::kNormal_Width, SkFontStyle::kUpright_Slant);
+     std::vector<sk_sp<SkTypeface>> typefaces;
+     if (!family.empty())
+--- a/src/ui/label.cpp
++++ b/src/ui/label.cpp
+@@ -710,7 +710,7 @@
+         for (const Span& span : m_spans) {
+             textlayout::TextStyle spanStyle = style;
+             if (span.weight > 0 || span.italic)
+-                spanStyle.setFontStyle(SkFontStyle(span.weight > 0 ? span.weight : m_weight, SkFontStyle::kNormal_Width,
++                spanStyle.setFontStyle(SkFontStyle(span.weight > 0 ? span.weight : style.getFontStyle().weight(), SkFontStyle::kNormal_Width,
+                                                    span.italic ? SkFontStyle::kItalic_Slant
+                                                                : SkFontStyle::kUpright_Slant));
+             const std::string content = withBreaks(span.text, offset);
+--- a/src/ui/glyph_run.h
++++ b/src/ui/glyph_run.h
+@@ -24,6 +24,7 @@
+     double pointSize = 10;
+     bool bold = false;
+     bool italic = false;
++    int weight = 400;
+
+     bool operator==(const FontSpec&) const = default;
+ };
+--- a/src/ui/glyph_run.cpp
++++ b/src/ui/glyph_run.cpp
+@@ -211,7 +211,7 @@
+     , scale(deviceScale)
+     , pixelSize(pixelSizeForPoints(font.pointSize))
+     , devicePixelSize(pixelSize * deviceScale)
+-    , style(font.bold ? SkFontStyle::kBold_Weight : SkFontStyle::kNormal_Weight, SkFontStyle::kNormal_Width,
++    , style(font.bold ? std::max(700, font.weight) : font.weight, SkFontStyle::kNormal_Width,
+             font.italic ? SkFontStyle::kItalic_Slant : SkFontStyle::kUpright_Slant)
+ {
+     TextContext& text = Application::instance()->text();
+@@ -583,7 +583,7 @@
+ }
+
+ FontMetrics::FontMetrics(const FontSpec& font, double scale, bool hintedLayout)
+-    : m_font(std::make_shared<GlyphRendererPrivate>(FontSpec{font.family, font.pointSize, font.bold, font.italic}, 1.0))
++    : m_font(std::make_shared<GlyphRendererPrivate>(font, 1.0))
+ {
+     m_pixelSize = m_font->pixelSize;
+     if (m_font->faces.empty())
+--- a/src/ui/text_layout.cpp
++++ b/src/ui/text_layout.cpp
+@@ -63,17 +63,17 @@
+
+ } // namespace
+
+-static FontSet& fontSet(const std::string& family, bool bold, bool italic)
+-{
+-    static std::map<std::tuple<std::string, bool, bool>, std::unique_ptr<FontSet>> sets;
+-    const auto key = std::make_tuple(family, bold, italic);
++static FontSet& fontSet(const std::string& family, int weight, bool italic)
++{
++    static std::map<std::tuple<std::string, int, bool>, std::unique_ptr<FontSet>> sets;
++    const auto key = std::make_tuple(family, weight, italic);
+     auto it = sets.find(key);
+     if (it != sets.end())
+         return *it->second;
+     auto set = std::make_unique<FontSet>();
+     set->family = family;
+     set->asciiInPrimary.fill(-1);
+-    set->style = SkFontStyle(bold ? SkFontStyle::kBold_Weight : SkFontStyle::kNormal_Weight, SkFontStyle::kNormal_Width,
++    set->style = SkFontStyle(weight, SkFontStyle::kNormal_Width,
+                              italic ? SkFontStyle::kItalic_Slant : SkFontStyle::kUpright_Slant);
+     TextContext& text = Application::instance()->text();
+     sk_sp<SkFontMgr> manager = text.fontCollection()->getFallbackManager();
+@@ -337,8 +337,8 @@
+     drawCached = false;
+
+     // Measured once per font and scale: every line of a document shares it.
+-    static std::map<std::tuple<std::string, double, bool, bool, double, bool>, FontMetrics> metricsCache;
+-    const auto key = std::make_tuple(font.family, font.pointSize, font.bold, font.italic, scale, hintedLayout);
++    static std::map<std::tuple<std::string, double, bool, bool, int, double, bool>, FontMetrics> metricsCache;
++    const auto key = std::make_tuple(font.family, font.pointSize, font.bold, font.italic, font.weight, scale, hintedLayout);
+     auto cached = metricsCache.find(key);
+     if (cached == metricsCache.end())
+         cached = metricsCache.emplace(key, FontMetrics(font, scale, hintedLayout)).first;
+@@ -439,7 +439,7 @@
+         const TextFormatRange* format = formatAt(i);
+         const bool bold = format ? format->bold || font.bold : font.bold;
+         const bool italic = format ? format->italic || font.italic : font.italic;
+-        FontSet& set = fontSet(font.family, bold, italic);
++        FontSet& set = fontSet(font.family, bold ? std::max(700, font.weight) : font.weight, italic);
+         int32_t next = int32_t(i);
+         UChar32 c;
+         U8_NEXT(text.data(), next, int32_t(text.size()), c);
+@@ -948,7 +948,7 @@
+ {
+     const Theme& theme = Theme::current();
+     return {theme.fixedFontFamily.empty() ? std::string("Noto Mono") : theme.fixedFontFamily, theme.fontPointSize,
+-            false, false};
++            false, false, theme.fixedFontWeight};
+ }
+
+ } // namespace cutefish::ui
+--- /dev/null
++++ b/tests/font_weight_test.cpp
+@@ -0,0 +1,60 @@
++#include <algorithm>
++#include <gtest/gtest.h>
++#include "ui/application.h"
++#include "ui/label.h"
++#include "ui/text_context.h"
++#include "ui/text_layout.h"
++#include "ui/theme.h"
++#include "ui/window.h"
++
++using namespace cutefish::ui;
++
++class FontWeightTest : public testing::Test {
++protected:
++    Theme saved = Theme::current();
++    void TearDown() override { Theme::setCurrent(saved); }
++};
++
++TEST_F(FontWeightTest, NativeLabelsRepaintAndExplicitEmphasisIsPreserved)
++{
++    Theme theme = Theme::light();
++    theme.fontFamily = "DejaVu Sans";
++    theme.fontPointSize = 20;
++    Theme::setCurrent(theme);
++    Window window;
++    window.resize({360, 50});
++    auto label = std::make_unique<Label>("Readable font weight");
++    window.setContentView(std::move(label));
++    window.show();
++    const Image regular = window.grab();
++    theme.fontWeight = 700;
++    Theme::setCurrent(theme);
++    const Image bold = window.grab();
++    ASSERT_EQ(regular.width(), bold.width());
++    ASSERT_EQ(regular.height(), bold.height());
++    EXPECT_FALSE(std::equal(regular.bits(), regular.bits() + regular.width() * regular.height(), bold.bits()));
++    const auto& text = Application::instance()->text();
++    EXPECT_EQ(text.style(20, 400, theme.text).getFontStyle().weight(), 700);
++    EXPECT_EQ(text.style(20, 600, theme.text).getFontStyle().weight(), 600);
++}
++
++TEST_F(FontWeightTest, FixedWeightIsIndependentAndReachesGlyphMetrics)
++{
++    Theme theme = Theme::light();
++    theme.fontFamily = "DejaVu Sans";
++    theme.fixedFontFamily = "DejaVu Sans Mono";
++    theme.fontWeight = 300;
++    theme.fixedFontWeight = 700;
++    Theme::setCurrent(theme);
++    const FontSpec fixed = systemFixedFont();
++    EXPECT_EQ(fixed.weight, 700);
++    EXPECT_EQ(fixed.family, "DejaVu Sans Mono");
++    const auto& text = Application::instance()->text();
++    EXPECT_EQ(text.style(20, 400, theme.text, fixed.family).getFontStyle().weight(), 700);
++    EXPECT_EQ(text.style(20, 400, theme.text).getFontStyle().weight(), 300);
++    TextLayout layout("mmWW0123", fixed);
++    layout.beginLayout();
++    ASSERT_GE(layout.createLine(1000, {}), 0);
++    layout.endLayout();
++    EXPECT_NEAR(layout.maximumWidth(), FontMetrics(fixed).horizontalAdvanceF("mmWW0123"), 1);
++}
+--- a/tests/CMakeLists.txt
++++ b/tests/CMakeLists.txt
+@@ -1,4 +1,6 @@
+ find_package(GTest REQUIRED)
++add_executable(cutefish-font-weight-test main.cpp font_weight_test.cpp)
++target_link_libraries(cutefish-font-weight-test PRIVATE cutefish-toolkit GTest::gtest)
+ include(GoogleTest)
+
+ # Linked against the base library alone, which proves it needs no display.

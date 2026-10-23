@@ -49,6 +49,12 @@ Sources are pinned in `sources.lock`; source patches live beside
 the Debian packaging. Each release includes Debian source packages and build
 metadata, preserving upstream copyright and licensing information.
 
+Mint appearance refinements restore the menu logo when an account photo is
+missing, add independent font-weight controls, compact the dock, and use a flat
+menu-bar tint. [MINT-PATCHES.md](MINT-PATCHES.md) documents the isolated patches,
+optional configuration, and upstream sync procedure. Upgrade the complete bundle,
+then log out and back in so all applications use the rebuilt toolkit.
+
 ## Validation
 
 The workflow builds inside Ubuntu 24.04 containers, builds the desktop components

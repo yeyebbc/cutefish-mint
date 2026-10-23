@@ -1,0 +1,16 @@
+Description: Keep the system fixed font weight when the editor inherits its font.
+Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
+Forwarded: no
+
+--- a/src/editorwindow.cpp
++++ b/src/editorwindow.cpp
+@@ -421,7 +421,8 @@
+     // system fixed font's size.
+     const double size = settings.fontSize > 0 ? settings.fontSize : 10;
+     return FontSpec{settings.fontFamily.empty() ? system.family : settings.fontFamily,
+-                    std::max(4.0, std::round(size * m_zoom * 2) / 2)};
++                    std::max(4.0, std::round(size * m_zoom * 2) / 2), false, false,
++                    settings.fontFamily.empty() ? system.weight : 400};
+ }
+
+ WindowTabBar *EditorWindow::tabBar() const

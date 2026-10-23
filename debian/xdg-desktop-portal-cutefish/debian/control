@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Reion Wong <reionwong@gmail.com>
 Build-Depends: cmake,
                debhelper-compat (= 13),
-               cutefish-toolkit,
+               cutefish-toolkit (>= 1.0~git20261021191855.9e161d0-1+noble2),
                pkg-config,
                libwayland-bin,
                libwayland-dev,
@@ -19,7 +19,7 @@ Homepage: https://github.com/cutefishos/xdg-desktop-portal-cutefish
 Package: xdg-desktop-portal-cutefish
 Architecture: any
 Depends: xdg-desktop-portal,
-         cutefish-toolkit,
+         cutefish-toolkit (>= 1.0~git20261021191855.9e161d0-1+noble2),
          ${misc:Depends},
          ${shlibs:Depends}
 Recommends: cutefish-compositor

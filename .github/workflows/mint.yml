@@ -131,6 +131,12 @@ jobs:
           name: log-${{ matrix.project }}
           path: build.log
       - uses: actions/upload-artifact@v7
+        if: always() && (matrix.project == 'settings' || matrix.project == 'cutefish-compositor')
+        with:
+          name: previews-${{ matrix.project }}
+          path: packaging/out/previews
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v7
         with:
           name: package-${{ matrix.project }}
           path: |
@@ -182,6 +188,7 @@ jobs:
             wayland-info.log
             calculator-test.log
             windows-test.json
+            font-service-test.log
       - uses: actions/download-artifact@v8
         with:
           pattern: sources-*

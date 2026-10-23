@@ -3,6 +3,9 @@ Section: libs
 Priority: optional
 Maintainer: Reion Wong <reionwong@gmail.com>
 Build-Depends: cmake,
+               libgtest-dev,
+               dbus-daemon,
+               fonts-dejavu-core,
                debhelper-compat (= 13),
                clang,
                generate-ninja,
@@ -35,6 +38,18 @@ Package: cutefish-toolkit
 Architecture: any
 Depends: ${misc:Depends},
          ${shlibs:Depends}
+Breaks: cutefish-settings (<< 1.0~git20261020142206.c0f85ad-1+noble2),
+        cutefish-calculator (<< 1.0~git20261022181857.7994fab-1+noble2),
+        cutefish-filemanager (<< 1.0~git20261021191855.a475b51-1+noble2),
+        cutefish-framework (<< 1.0~git20261020142206.c138da6-1+noble2),
+        xdg-desktop-portal-cutefish (<< 1.0~git20261019230830.03d019c-1+noble2),
+        cutefish-terminal (<< 1.0~git20261021192723.bd1d322-1+noble2),
+        cutefish-calendar (<< 1.0~git20261021191856.342ffb9-1+noble2),
+        cutefish-video-player (<< 1.0~git20261019230830.86f2eab-1+noble2),
+        cutefish-compositor (<< 1.0~git20261021191855.0c27874-1+noble3),
+        cutefish-core (<< 1.0~git20261021191856.4e8e606-1+noble2),
+        cutefish-text-editor (<< 1.0~git20261021192731.c17fab3-1+noble2),
+        cutefish-system-monitor (<< 1.0~git20261019230830.0ddafa4-1+noble2)
 Recommends: libjxl0.7
 Description: Cutefish UI toolkit
  The toolkit every Cutefish application is built with: a Wayland client for

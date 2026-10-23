@@ -4,8 +4,8 @@ Priority: optional
 Maintainer: Reion Wong <reionwong@gmail.com>
 Build-Depends: cmake,
                debhelper-compat (= 13),
-               cutefish-toolkit,
-               cutefish-framework,
+               cutefish-toolkit (>= 1.0~git20261021191855.9e161d0-1+noble2),
+               cutefish-framework (>= 1.0~git20261020142206.c138da6-1+noble2),
                libarchive-dev,
                libfuse3-dev,
                libicu-dev,
@@ -22,8 +22,8 @@ Package: cutefish-filemanager
 Architecture: any
 Depends: udisks2,
          fuse3,
-         cutefish-toolkit,
-         cutefish-framework,
+         cutefish-toolkit (>= 1.0~git20261021191855.9e161d0-1+noble2),
+         cutefish-framework (>= 1.0~git20261020142206.c138da6-1+noble2),
          ${misc:Depends},
          ${shlibs:Depends}
 Description: CutefishOS File Manager

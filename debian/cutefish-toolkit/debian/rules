@@ -1,5 +1,7 @@
 #!/usr/bin/make -f
 
+include /usr/share/dpkg/architecture.mk
+
 %:
 	dh $@
 
@@ -12,3 +14,9 @@ override_dh_auto_configure:
 override_dh_auto_clean:
 	dh_auto_clean
 	rm -f third_party/skia/bin/gn
+
+override_dh_auto_test:
+	dh_auto_configure -- -DBUILD_TESTING=ON
+	cmake --build obj-$(DEB_HOST_GNU_TYPE) --parallel 4 --target cutefish-font-weight-test
+	dbus-run-session -- obj-$(DEB_HOST_GNU_TYPE)/tests/cutefish-font-weight-test
+	dh_auto_configure -- -DBUILD_TESTING=OFF

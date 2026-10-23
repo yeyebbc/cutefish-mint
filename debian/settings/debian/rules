@@ -1,11 +1,14 @@
 #!/usr/bin/make -f
+include /usr/share/dpkg/architecture.mk
 
 %:
 	dh $@
 
-# The tests need a Wayland compositor and a session bus; they run in
-# development builds, not in the package build.
 override_dh_auto_configure:
 	dh_auto_configure -- -DBUILD_TESTING=OFF
 
 override_dh_auto_test:
+	dh_auto_configure -- -DBUILD_TESTING=ON
+	cmake --build obj-$(DEB_HOST_GNU_TYPE) --parallel 4 --target settings-ui-tests
+	CUTEFISH_CAPTURE_DIR=/work/packaging/out/previews dbus-run-session --config-file=tests/ui/dbus-session.conf -- obj-$(DEB_HOST_GNU_TYPE)/tests/ui/settings-ui-tests --gtest_filter='Fonts.*'
+	dh_auto_configure -- -DBUILD_TESTING=OFF

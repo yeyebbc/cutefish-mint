@@ -9,8 +9,8 @@ Build-Depends: cmake (>= 3.22),
                xwayland,
                libgl1-mesa-dri,
                pkg-config,
-               cutefish-toolkit,
-               cutefish-framework,
+               cutefish-toolkit (>= 1.0~git20261021191855.9e161d0-1+noble2),
+               cutefish-framework (>= 1.0~git20261020142206.c138da6-1+noble2),
                libwayland-dev (>= 1.23),
                libwayland-bin,
                wayland-protocols (>= 1.39),
@@ -40,8 +40,8 @@ Homepage: https://github.com/cutefishos/cutefish-compositor
 
 Package: cutefish-compositor
 Architecture: any
-Depends: cutefish-toolkit,
-         cutefish-framework,
+Depends: cutefish-toolkit (>= 1.0~git20261021191855.9e161d0-1+noble2),
+         cutefish-framework (>= 1.0~git20261020142206.c138da6-1+noble2),
          ${misc:Depends},
          ${shlibs:Depends}
 Recommends: xwayland,

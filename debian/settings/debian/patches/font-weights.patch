@@ -1,0 +1,145 @@
+Description: Add a saved weight choice for each font category using existing row controls.
+Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
+Forwarded: no
+
+--- a/src/pages/fonts/fontspage.cpp
++++ b/src/pages/fonts/fontspage.cpp
+@@ -64,10 +64,21 @@
+         Card* card = content()->addChild<Card>(Card::Style::List);
+         m_general = addRow(card, tr("General font"))->addContent<RowComboBox>();
+         m_general->onActivated = [this](int) { m_appearance.setFontFamily(m_general->currentText()); };
++        const std::vector<std::string> weights = {
++            tr("Thin"), tr("Extra Light"), tr("Light"), tr("Regular"), tr("Medium"),
++            tr("Semi Bold"), tr("Bold"), tr("Extra Bold"), tr("Black"),
++        };
++        m_generalWeight = addRow(card, tr("General font weight"))->addContent<RowComboBox>(weights);
++        m_generalWeight->setName("general-font-weight");
++        m_generalWeight->onActivated = [this](int index) { m_appearance.setFontWeight((index + 1) * 100); };
+         m_fixed = addRow(card, tr("Fixed font"))->addContent<RowComboBox>();
+         m_general->setFontPreview(true);
+         m_fixed->setFontPreview(true);
+         m_fixed->onActivated = [this](int) { m_appearance.setFixedFontFamily(m_fixed->currentText()); };
++
++        m_fixedWeight = addRow(card, tr("Fixed font weight"))->addContent<RowComboBox>(weights);
++        m_fixedWeight->setName("fixed-font-weight");
++        m_fixedWeight->onActivated = [this](int index) { m_appearance.setFixedFontWeight((index + 1) * 100); };
+
+         std::vector<std::string> sizes;
+         for (const int size : kSizes)
+@@ -127,6 +138,8 @@
+             m_general->setCurrentIndex(index);
+         if (const int index = indexOf(m_fonts.fixed, m_appearance.fixedFontFamily()); index >= 0)
+             m_fixed->setCurrentIndex(index);
++        m_generalWeight->setCurrentIndex(std::clamp((m_appearance.fontWeight() + 50) / 100, 1, 9) - 1);
++        m_fixedWeight->setCurrentIndex(std::clamp((m_appearance.fixedFontWeight() + 50) / 100, 1, 9) - 1);
+         // The menu marks the default; the box shows only the size.
+         const double size = m_appearance.fontPointSize();
+         const auto it = std::find(kSizes.begin(), kSizes.end(), size);
+@@ -142,6 +155,8 @@
+     FontList m_fonts;
+     RowComboBox* m_general;
+     RowComboBox* m_fixed;
++    RowComboBox* m_generalWeight;
++    RowComboBox* m_fixedWeight;
+     RowComboBox* m_size;
+     bool m_antiAliasing = true;
+     int m_hinting = 3;
+--- a/tests/ui/CMakeLists.txt
++++ b/tests/ui/CMakeLists.txt
+@@ -25,13 +25,15 @@
+ target_link_libraries(settings-ui-tests PRIVATE settings-ui GTest::gtest)
+ # Each test on a session bus of its own, where the pages' fakes own their
+ # services' names and the session's real services are out of reach.
++find_program(DBUS_RUN_SESSION_EXECUTABLE dbus-run-session REQUIRED)
+ if(CMAKE_VERSION VERSION_LESS 3.29)
+-    message(FATAL_ERROR "settings-ui-tests need CMake 3.29 for TEST_LAUNCHER")
++    add_test(NAME settings-ui-tests COMMAND ${DBUS_RUN_SESSION_EXECUTABLE}
++        --config-file=${CMAKE_CURRENT_SOURCE_DIR}/dbus-session.conf -- $<TARGET_FILE:settings-ui-tests>)
++else()
++    set_target_properties(settings-ui-tests PROPERTIES TEST_LAUNCHER
++        "${DBUS_RUN_SESSION_EXECUTABLE};--config-file=${CMAKE_CURRENT_SOURCE_DIR}/dbus-session.conf;--")
++    gtest_discover_tests(settings-ui-tests)
+ endif()
+-find_program(DBUS_RUN_SESSION_EXECUTABLE dbus-run-session REQUIRED)
+-set_target_properties(settings-ui-tests PROPERTIES TEST_LAUNCHER
+-    "${DBUS_RUN_SESSION_EXECUTABLE};--config-file=${CMAKE_CURRENT_SOURCE_DIR}/dbus-session.conf;--")
+-gtest_discover_tests(settings-ui-tests)
+
+ # Renders every page headless into PNGs, light and dark, at 100% and 150%.
+ add_executable(settings-capture capture.cpp)
+--- /dev/null
++++ b/tests/ui/fonts_test.cpp
+@@ -0,0 +1,73 @@
++#include <atomic>
++#include <cstdlib>
++#include <filesystem>
++#include <gtest/gtest.h>
++#include "input_test_support.h"
++#include "cutefish/appearance/appearance.h"
++#include "widgets/rowcombobox.h"
++#include "ui/theme.h"
++#include "window/settingswindow.h"
++
++using namespace cutefish;
++using namespace settings::testing;
++
++TEST(Fonts, EachWeightRoundTripsThroughTheServiceAndThePage)
++{
++    std::atomic<int32_t> general{400}, fixed{400};
++    ServiceThread service("org.cutefish.Services", [&](base::dbus::Connection& bus) {
++        auto object = std::make_shared<base::dbus::Object>(&bus, "/org/cutefish/Services/Appearance",
++                                                          "org.cutefish.Services.Appearance");
++        object->addProperty("systemFont", [] { return std::string("DejaVu Sans"); });
++        object->addProperty("systemFixedFont", [] { return std::string("DejaVu Sans Mono"); });
++        object->addProperty("systemFontPointSize", [] { return 10.0; });
++        object->addProperty("systemFontWeight", [&] { return general.load(); });
++        object->addProperty("systemFixedFontWeight", [&] { return fixed.load(); });
++        object->addSignal("systemFontWeightChanged", "");
++        object->addSignal("systemFixedFontWeightChanged", "");
++        auto* raw = object.get();
++        object->addMethod("setSystemFontWeight", [&, raw](int32_t weight) {
++            general = weight; raw->emitSignal("systemFontWeightChanged");
++        });
++        object->addMethod("setSystemFixedFontWeight", [&, raw](int32_t weight) {
++            fixed = weight; raw->emitSignal("systemFixedFontWeightChanged");
++        });
++        object->publish();
++        return object;
++    });
++    ASSERT_TRUE(service.start());
++    appearance::Appearance observer;
++    ASSERT_TRUE(waitFor([&] { return observer.isAvailable(); }));
++    settings::SettingsWindow settingsWindow;
++    auto& window = settingsWindow.window();
++    window.resize({900, 820});
++    settingsWindow.switchToPage("appearance");
++    settingsWindow.pushPage("fonts");
++    settingsWindow.reveal();
++    window.grab();
++    auto* generalBox = findView<settings::RowComboBox>(window.contentView(), "general-font-weight");
++    auto* fixedBox = findView<settings::RowComboBox>(window.contentView(), "fixed-font-weight");
++    ASSERT_NE(generalBox, nullptr);
++    ASSERT_NE(fixedBox, nullptr);
++    EXPECT_EQ(generalBox->currentIndex(), 3);
++    EXPECT_EQ(fixedBox->currentIndex(), 3);
++    generalBox->onActivated(6);
++    ASSERT_TRUE(waitFor([&] { return observer.fontWeight() == 700 && generalBox->currentIndex() == 6; }));
++    EXPECT_EQ(observer.fixedFontWeight(), 400);
++    fixedBox->onActivated(4);
++    ASSERT_TRUE(waitFor([&] { return observer.fixedFontWeight() == 500 && fixedBox->currentIndex() == 4; }));
++    EXPECT_EQ(observer.fontWeight(), 700);
++    if (const char* directory = std::getenv("CUTEFISH_CAPTURE_DIR")) {
++        std::filesystem::create_directories(directory);
++        const ui::Theme saved = ui::Theme::current();
++        for (bool dark : {false, true}) {
++            ui::Theme::setCurrent(dark ? ui::Theme::dark() : ui::Theme::light());
++            for (double scale : {1.0, 2.0}) {
++                window.setScale(scale);
++                const std::string path = std::string(directory) + "/fonts-" + (dark ? "dark" : "light")
++                        + (scale == 1 ? "@1.png" : "@2.png");
++                EXPECT_TRUE(window.grab().savePng(path));
++            }
++        }
++        ui::Theme::setCurrent(saved);
++    }
++}

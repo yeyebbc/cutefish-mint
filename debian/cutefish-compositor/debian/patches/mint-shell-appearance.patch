@@ -1,0 +1,430 @@
+Description: Provide a reliable menu logo, optional flat menu bar, and compact dock spacing.
+Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
+Forwarded: no
+
+--- a/src/shell/menubar/menu_bar_view.cpp
++++ b/src/shell/menubar/menu_bar_view.cpp
+@@ -32,7 +32,16 @@
+             setGlyphWidth(BarContext::kIconSize);
+             // A circular avatar decoded at its device size, as the Image
+             // with sourceSize and an OpacityMask of a circle.
++            // Reuse the Cutefish mark from settings/src/images/logo.svg.
++            // A missing or unreadable AccountsService photo must not leave an empty menu.
++            ui::Icon::registerGlyph("cutefish-menu", R"svg(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path fill="black" d="m 407,271.001 c 8.284,0 15,-6.716 15,-15 0,-8.284 -6.716,-15 -15,-15 -8.284,0 -15,6.716 -15,15 0,8.284 6.716,15 15,15 z m 100.607,-25.607 c -31.568,-31.569 -61.924,-54.228 -92.798,-69.269 -35.594,-17.341 -71.939,-24.803 -111.098,-22.809 -41.725,2.123 -85.538,14.913 -133.944,39.101 -24.547,12.266 -49.936,27.295 -76.519,45.315 -21.74,-15.507 -44.585,-33.206 -68.645,-53.256 -6.364,-5.303 -15.821,-4.444 -21.126,1.921 -5.304,6.364 -4.443,15.822 1.921,21.126 21.418,17.848 42.002,33.97 61.898,48.477 -19.896,14.506 -40.48,30.628 -61.898,48.477 -6.364,5.304 -7.225,14.762 -1.921,21.126 5.321,6.385 14.783,7.208 21.126,1.921 24.06,-20.05 46.905,-37.749 68.646,-53.256 26.583,18.02 51.972,33.049 76.519,45.315 45.789,22.881 95.02,39.416 146.205,39.416 34.534,0 66.986,-7.606 98.837,-23.124 30.874,-15.041 61.229,-37.699 92.798,-69.269 2.929,-2.929 4.394,-6.768 4.394,-10.606 0,-3.838 -1.466,-7.677 -4.395,-10.606 z m -387.721,10.607 c 168.389,-110.761 267.602,-82.731 355.575,0 -87.974,82.73 -187.187,110.761 -355.575,0 z"/></svg>)svg");
++            m_logo = addChild<BarIcon>();
++            m_logo->setName("menu-logo");
++            m_logo->setGlyph("cutefish-menu");
+             m_avatar = addChild<ui::ImageView>();
++            m_avatar->onStatusChanged = [this](ui::ImageView::Status status) {
++                m_logo->setVisible(status != ui::ImageView::Status::Ready);
++            };
+             m_avatar->setFillMode(ui::ImageView::FillMode::Stretch);
+             m_avatar->setMipmap(true);
+             m_avatar->setCornerRadius(BarContext::kIconSize / 2);
+@@ -63,6 +72,10 @@
+
+     void updateLook()
+     {
++        if (m_logo) {
++            m_logo->setColor(bar()->menuTextColor());
++            m_logo->setDropShadow(bar()->lightContents());
++        }
+         if (m_label) {
+             // The application's name stands out from its menus, a step
+             // lighter in black, which carries more weight than white.
+@@ -77,6 +90,8 @@
+ protected:
+     void layout() override
+     {
++        if (m_logo)
++            m_logo->setGeometry(centred({24, 24}));
+         if (m_avatar)
+             m_avatar->setGeometry(centred({BarContext::kIconSize, BarContext::kIconSize}));
+         if (m_label)
+@@ -87,6 +102,7 @@
+     const MenuBarModel::Row m_row;
+     BarLabel *m_label = nullptr;
+     ui::ImageView *m_avatar = nullptr;
++    BarIcon *m_logo = nullptr;
+ };
+
+ MenuBarView::MenuBarView(Shell *shell, StatusBarMenuBarHost host)
+--- a/src/shell/dock/dock_metrics.h
++++ b/src/shell/dock/dock_metrics.h
+@@ -34,7 +34,7 @@
+     int dotSize = 4;
+     int edgePadding = 4;
+
+-    static DockMetrics forIconSize(int iconSize)
++    static DockMetrics forIconSize(int iconSize, bool compact = false)
+     {
+         const double scale = std::max(1, iconSize) / double(kBaseIconSize);
+         // qRound: halves away from zero.
+@@ -43,10 +43,10 @@
+         };
+         DockMetrics metrics;
+         metrics.iconSize = std::max(1, iconSize);
+-        metrics.iconGap = scaled(16);
+-        metrics.lengthPadding = scaled(16);
+-        metrics.outerPadding = scaled(16);
+-        metrics.dotGap = scaled(8);
++        metrics.iconGap = scaled(compact ? 6 : 16);
++        metrics.lengthPadding = scaled(compact ? 8 : 16);
++        metrics.outerPadding = scaled(compact ? 8 : 16);
++        metrics.dotGap = scaled(compact ? 4 : 8);
+         metrics.dotSize = scaled(4);
+         metrics.edgePadding = scaled(4);
+         return metrics;
+--- a/src/shell/dock/dock_settings.h
++++ b/src/shell/dock/dock_settings.h
+@@ -40,6 +40,8 @@
+
+     bool isReady() const { return m_ready; }
+
++    bool compactSpacing() const { return m_compactSpacing; }
++
+     int iconSize() const { return m_iconSize; }
+     // Written once the size has stopped changing for a moment, as a slider
+     // drags it.
+@@ -64,6 +66,7 @@
+
+ private:
+     struct Values {
++        bool compactSpacing = true;
+         int iconSize = kBaseIconSize;
+         Direction direction = Bottom;
+         Visibility visibility = AlwaysShow;
+@@ -77,6 +80,7 @@
+
+     std::string m_path;
+     bool m_ready = false;
++    bool m_compactSpacing = true;
+     int m_iconSize = kBaseIconSize;
+     Direction m_direction = Bottom;
+     Visibility m_visibility = AlwaysShow;
+--- a/src/shell/dock/dock_settings.cpp
++++ b/src/shell/dock/dock_settings.cpp
+@@ -28,6 +28,7 @@
+                                  const bool visibility = values.visibility != m_visibility;
+                                  const bool tint = values.glassTint != m_glassTint;
+                                  const bool area = values.minimizedArea != m_minimizedArea;
++                                 m_compactSpacing = values.compactSpacing;
+                                  m_iconSize = values.iconSize;
+                                  m_direction = values.direction;
+                                  m_visibility = values.visibility;
+@@ -68,6 +69,7 @@
+     settings.sync();
+
+     Values values;
++    values.compactSpacing = settings.boolValue("Dock/CompactSpacing", true);
+     values.iconSize = int(settings.intValue("Dock/IconSize", kBaseIconSize));
+     values.direction = Direction(settings.intValue("Dock/Direction", Bottom));
+     values.visibility = Visibility(settings.intValue("Dock/Visibility", AlwaysShow));
+--- a/src/shell/dock/dock_window.cpp
++++ b/src/shell/dock/dock_window.cpp
+@@ -316,7 +316,7 @@
+     // A side dock is centred in the work area, which other panels' zones and
+     // its own former bottom zone change after it was placed.
+     m_subscriptions.push_back(m_shell->windowManager()->exclusiveZonesChanged.connect([this] {
+-        const int thickness = DockMetrics::forIconSize(m_dock->settings().iconSize()).thickness();
++        const int thickness = DockMetrics::forIconSize(m_dock->settings().iconSize(), m_dock->settings().compactSpacing()).thickness();
+         if (windowRect(thickness) != m_windowRect)
+             resize(false);
+     }));
+@@ -544,13 +544,13 @@
+                                          - settings.edgeMargins()
+                                  : 0;
+
+-    DockMetrics metrics = DockMetrics::forIconSize(settings.iconSize());
++    DockMetrics metrics = DockMetrics::forIconSize(settings.iconSize(), settings.compactSpacing());
+     // Not enough room for every icon: shrink until the dock fits, keeping
+     // the paddings in proportion with the icons.
+     const int separatorCount = applications.count() > applications.pinnedCount() ? 2 : 1;
+     while (output && metrics.length(itemCount) + separatorCount * metrics.sectionExtent() > maxLength
+            && metrics.iconSize > 1)
+-        metrics = DockMetrics::forIconSize(metrics.iconSize - 1);
++        metrics = DockMetrics::forIconSize(metrics.iconSize - 1, settings.compactSpacing());
+
+     animate = animate && m_applications->animationsEnabled();
+     const bool changed = metrics != m_metrics;
+@@ -578,7 +578,7 @@
+     const Shell::Output *output = m_shell->output({});
+     if (output)
+         m_window->setOutput(output->name);
+-    m_windowRect = windowRect(DockMetrics::forIconSize(m_dock->settings().iconSize()).thickness());
++    m_windowRect = windowRect(DockMetrics::forIconSize(m_dock->settings().iconSize(), m_dock->settings().compactSpacing()).thickness());
+     if (!m_windowRect.isEmpty())
+         m_window->setGeometry(m_windowRect);
+     m_surfaceLength = m_dock->settings().direction() == DockSettings::Bottom ? m_windowRect.width()
+--- a/src/shell/statusbar/status_bar_window.h
++++ b/src/shell/statusbar/status_bar_window.h
+@@ -116,6 +116,7 @@
+     void updatePlateBlur();
+     ui::RectF availableGeometry() const;
+
++    bool m_flatBackground = true;
+     Shell *m_shell;
+     std::unique_ptr<StatusBar> m_statusBar;
+     std::unique_ptr<StatusBarBackdrop> m_backdrop;
+--- a/src/shell/statusbar/status_bar_window.cpp
++++ b/src/shell/statusbar/status_bar_window.cpp
+@@ -15,6 +15,8 @@
+
+ #include "base/dbus.h"
+ #include "base/locale.h"
++#include "base/settings.h"
++#include "core/preferences.h"
+ #include "core/main_loop.h"
+ #include "shell/shell_window.h"
+ #include "shell/statusbar/clock_format.h"
+@@ -89,6 +91,7 @@
+     , m_statusBar(std::move(statusBar))
+     , m_backdrop(std::make_unique<StatusBarBackdrop>())
+ {
++    m_flatBackground = base::Settings(preferencesFile("shell")).boolValue("Statusbar/FlatBackground", true);
+     base::dbus::Connection *bus = m_shell->bus();
+     m_vpnNotifier = std::make_unique<VpnNotifier>(bus);
+     m_vpnNotifier->openSettings = [shell] { shell->openSettings({"-m", "vpn"}); };
+@@ -213,6 +216,8 @@
+     m_window->setOutput(output->name);
+     m_window->setGeometry(base::Rect(output->bounds.x(), output->bounds.y(), output->bounds.width(), kHeight));
+     m_window->setExclusiveZone(wm::ScreenEdge::Top, kHeight);
++    if (m_flatBackground)
++        updatePlateBlur();
+ }
+
+ void StatusBarWindow::setWallpaper(Wallpaper *wallpaper)
+@@ -241,7 +246,11 @@
+ {
+     // What is behind the bar decides; the system's dark mode while nothing
+     // has been judged.
+-    const bool light = m_backdrop->isValid() ? m_backdrop->useLightForeground() : ui::Theme::current().darkMode;
++    const bool light = !m_flatBackground && m_backdrop->isValid()
++            ? m_backdrop->useLightForeground() : ui::Theme::current().darkMode;
++    if (m_flatBackground)
++        m_window->window()->setBackgroundColor(light ? ui::Color {28, 28, 30, 220}
++                                                     : ui::Color {246, 246, 246, 210});
+     m_lightContents = light;
+     if (m_menuBar)
+         m_menuBar->barChanged();
+@@ -275,6 +284,14 @@
+ {
+     if (!m_window || !m_root)
+         return;
++    if (m_flatBackground) {
++        const ui::RectF strip {0, 0, double(m_window->geometry().width()), kHeight};
++        if (strip != m_blurPlate) {
++            m_blurPlate = strip;
++            m_window->setBackgroundBlur(base::Rect(0, 0, m_window->geometry().width(), kHeight), 0);
++        }
++        return;
++    }
+     // A surface has one blur, and one plate shows at a time: opening a panel
+     // or a menu closes the others.
+     const BarItem *item = findPlate(m_root);
+--- a/src/shell/wallpaper/wallpaper.h
++++ b/src/shell/wallpaper/wallpaper.h
+@@ -110,6 +110,7 @@
+     void reloadAppearance();
+     static std::string sampleKey(const std::string &path, const base::Size &size);
+
++    bool m_flatMenuBar = true;
+     Shell *m_shell;
+     WallpaperCache m_cache;
+     std::string m_servicesSettings;
+--- a/src/shell/wallpaper/wallpaper.cpp
++++ b/src/shell/wallpaper/wallpaper.cpp
+@@ -123,6 +123,7 @@
+     , m_cache(std::move(cacheDirectory))
+     , m_servicesSettings(servicesSettings.empty() ? preferencesFile("services") : std::move(servicesSettings))
+ {
++    m_flatMenuBar = base::Settings(preferencesFile("shell")).boolValue("Statusbar/FlatBackground", true);
+     m_outputsChanged = m_shell->outputsChanged.connect([this] { updateOutputs(); });
+     updateOutputs();
+     if (m_shell->bus()) {
+@@ -394,7 +395,7 @@
+ void Wallpaper::updateGradient()
+ {
+     for (const std::unique_ptr<Screen> &screen : m_screens) {
+-        const bool shows = screen->output.primary && m_judged && m_style.gradientVisible
++        const bool shows = !m_flatMenuBar && screen->output.primary && m_judged && m_style.gradientVisible
+                 && (screen->showingImage || screen->showingColor);
+         screen->node->setGradient(shows ? std::optional<scene::WallpaperNode::Gradient>(
+                                                   {m_style.gradientColor, BarBackdrop::kGradientHeight})
+--- a/tests/shell/dock_test.cpp
++++ b/tests/shell/dock_test.cpp
+@@ -14,6 +14,7 @@
+ #include "shell/common/file_thread.h"
+ #include "shell/common/task_manager.h"
+ #include "shell/dock/dock.h"
++#include "shell/dock/dock_metrics.h"
+ #include "shell_test_util.h"
+ #include "temporary_directory.h"
+
+@@ -374,3 +375,19 @@
+     EXPECT_TRUE(state.entries.contains(stick));
+     EXPECT_TRUE(state.entries.contains(data));
+ }
++
++TEST_F(DockTest, CompactSpacingKeepsIconSizeAndCanBeDisabled)
++{
++    start("[Dock]\nIconSize=37\nCompactSpacing=false\n");
++    EXPECT_FALSE(dock->settings().compactSpacing());
++    EXPECT_EQ(dock->settings().iconSize(), 37);
++    for (int size : {24, 37, 54, 96}) {
++        const auto compact = shell::DockMetrics::forIconSize(size, true);
++        const auto upstream = shell::DockMetrics::forIconSize(size);
++        EXPECT_EQ(compact.iconSize, upstream.iconSize);
++        EXPECT_LT(compact.length(8), upstream.length(8));
++        EXPECT_LT(compact.thickness(), upstream.thickness());
++        EXPECT_GE(compact.pitch(), size);
++        EXPECT_GT(compact.dotAreaSize(), compact.dotSize);
++    }
++}
+--- a/tests/shell/menubar_test.cpp
++++ b/tests/shell/menubar_test.cpp
+@@ -38,6 +38,9 @@
+ #include "temporary_directory.h"
+ #include "ui/embedded_window.h"
+ #include "ui/menu.h"
++#include "ui/image_view.h"
++#include <cstdlib>
++#include <filesystem>
+ #include "wm/window.h"
+ #include "wm/window_manager.h"
+
+@@ -627,3 +630,41 @@
+     frame();
+     EXPECT_TRUE(manager.popupGrabs().empty());
+ }
++
++TEST_F(MenuBarTest, MissingAccountPhotoShowsTheLogoInBothAppearances)
++{
++    view->setUserIcon(directory.filePath("missing-face.png"));
++    ui::View* logo = nullptr;
++    ui::ImageView* avatar = nullptr;
++    for (const auto& child : view->entry(0)->children()) {
++        if (child->name() == "menu-logo")
++            logo = child.get();
++        if (auto* image = dynamic_cast<ui::ImageView*>(child.get()))
++            avatar = image;
++    }
++    ASSERT_NE(logo, nullptr);
++    ASSERT_NE(avatar, nullptr);
++    ASSERT_TRUE(test::runUntil([&] { frame(); return avatar->status() == ui::ImageView::Status::Error; }));
++    EXPECT_TRUE(logo->isVisible());
++    for (bool light : {false, true}) {
++        bar->light = light;
++        view->barChanged();
++        frame();
++        const ui::Image image = bar->window->window()->grab();
++        int ink = 0;
++        for (int y = 0; y < image.height(); ++y)
++            for (int x = 0; x < 46 && x < image.width(); ++x)
++                ink += image.pixel(x, y).a != 0;
++        EXPECT_GT(ink, 10);
++        if (const char* output = std::getenv("CUTEFISH_CAPTURE_DIR")) {
++            std::filesystem::create_directories(output);
++            EXPECT_TRUE(image.savePng(std::string(output) + (light ? "/menu-light-ink.png" : "/menu-dark-ink.png")));
++        }
++    }
++    ui::Image photo(16, 16);
++    std::fill(photo.bits(), photo.bits() + 256, 0xff445566u);
++    ASSERT_TRUE(photo.savePng(directory.filePath("face.png")));
++    view->setUserIcon(directory.filePath("face.png"));
++    ASSERT_TRUE(test::runUntil([&] { frame(); return avatar->status() == ui::ImageView::Status::Ready; }));
++    EXPECT_FALSE(logo->isVisible());
++}
+--- a/tests/shell/statusbar_view_test.cpp
++++ b/tests/shell/statusbar_view_test.cpp
+@@ -20,6 +20,11 @@
+ #include "compositor/surface.h"
+ #include "dbus_test_client.h"
+ #include "fake_renderer.h"
++#include <cstdlib>
++#include <filesystem>
++#include "ui/theme.h"
++#include "base/settings.h"
++#include "core/preferences.h"
+ #include "input/input_manager.h"
+ #include "input/seat.h"
+ #include "loop_test_util.h"
+@@ -127,8 +132,11 @@
+     shell::StatusBarWindow *bar = nullptr;
+     int time = 1000;
+
++    virtual bool flatMenuBar() const { return false; }
++
+     void SetUp() override
+     {
++        base::Settings(preferencesFile("shell")).setValue("Statusbar/FlatBackground", flatMenuBar());
+         shell::setShellDataDirectoryForTesting(CUTEFISH_SOURCE_DIR "/data/shell");
+         scene.setSize(kOutput.size());
+         manager.setOutputBounds(kOutput);
+@@ -564,3 +572,28 @@
+     EXPECT_EQ("Save_As", shell::DBusMenuPopup::plainLabel("Save__As"));
+     EXPECT_EQ("Tom & Jerry", shell::DBusMenuPopup::plainLabel("Tom & Jerry"));
+ }
++
++class FlatStatusBarViewTest : public StatusBarViewTest {
++    bool flatMenuBar() const override { return true; }
++};
++TEST_F(FlatStatusBarViewTest, UniformTintFollowsAppearanceAndIgnoresWallpaperBrightness)
++{
++    const ui::Theme saved = ui::Theme::current();
++    for (bool dark : {false, true}) {
++        ui::Theme::setCurrent(dark ? ui::Theme::dark() : ui::Theme::light());
++        frame();
++        test::processPendingEvents();
++        frame();
++        bar->backdrop().setColor(dark ? ui::Color::rgb(0xFFFFFF) : ui::Color::rgb(0x000000));
++        EXPECT_EQ(bar->lightContents(), dark);
++        const ui::Color expected = dark ? ui::Color {28, 28, 30, 220} : ui::Color {246, 246, 246, 210};
++        EXPECT_EQ(bar->window()->window()->backgroundColor(), expected);
++        const ui::Image image = bar->window()->window()->grab();
++        EXPECT_EQ(image.pixel(5, 2), image.pixel(5, image.height() - 3));
++        if (const char* output = std::getenv("CUTEFISH_CAPTURE_DIR")) {
++            std::filesystem::create_directories(output);
++            EXPECT_TRUE(image.savePng(std::string(output) + (dark ? "/bar-dark.png" : "/bar-light.png")));
++        }
++    }
++    ui::Theme::setCurrent(saved);
++}
+--- a/tests/shell/wallpaper_test.cpp
++++ b/tests/shell/wallpaper_test.cpp
+@@ -25,6 +25,8 @@
+ #include "compositor/output_scale.h"
+ #include "compositor/surface.h"
+ #include "fake_renderer.h"
++#include "base/settings.h"
++#include "core/preferences.h"
+ #include "input/input_manager.h"
+ #include "input/seat.h"
+ #include "loop_test_util.h"
+@@ -212,8 +214,11 @@
+     std::vector<std::unique_ptr<compositor::Surface>> surfaces;
+     std::shared_ptr<compositor::ShmPool> pool = testsupport::makePool(1 << 22);
+
++    virtual bool flatMenuBar() const { return false; }
++
+     void SetUp() override
+     {
++        base::Settings(preferencesFile("shell")).setValue("Statusbar/FlatBackground", flatMenuBar());
+         scene.setSize(kOutput.size());
+         compositor.setOutputScale(*compositor::OutputScale::fromNumerator(180));
+         manager.setOutputBounds(kOutput);
+@@ -396,3 +401,14 @@
+     EXPECT_NE(renderer.calls.front().texture, renderer.calls.back().texture);
+     EXPECT_EQ(nullptr, wallpaper->desktopCaptureSource(desktop, "elsewhere"));
+ }
++
++class FlatWallpaperTest : public WallpaperTest {
++    bool flatMenuBar() const override { return true; }
++};
++TEST_F(FlatWallpaperTest, FlatBarDoesNotPaintAGradientIntoTheWallpaper)
++{
++    showPicture(writePicture(directory, "mid.png", 64, 64, 0xffaaaaaau));
++    ASSERT_TRUE(test::runUntil([&] { return wallpaper->isJudged(); }));
++    EXPECT_TRUE(wallpaper->style().gradientVisible); // the legacy verdict still works
++    EXPECT_FALSE(node()->gradient());              // but the Mint strip needs no gradient
++}

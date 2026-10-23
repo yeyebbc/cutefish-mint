@@ -1,0 +1,156 @@
+Description: Persist and broadcast general/fixed font weights and mirror them to GTK.
+Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
+Forwarded: no
+
+--- a/cutefish-services/appearance/thememanager.h
++++ b/cutefish-services/appearance/thememanager.h
+@@ -47,6 +47,11 @@
+
+     std::string systemFixedFont();
+     void setSystemFixedFont(const std::string &fontFamily);
++
++    int systemFontWeight() const;
++    void setSystemFontWeight(int weight);
++    int systemFixedFontWeight() const;
++    void setSystemFixedFontWeight(int weight);
+
+     double systemFontPointSize();
+     void setSystemFontPointSize(double fontSize);
+--- a/cutefish-services/appearance/thememanager.cpp
++++ b/cutefish-services/appearance/thememanager.cpp
+@@ -99,6 +99,8 @@
+     o.addMethod("setSystemFont", [this](const std::string &value) { setSystemFont(value); }, {{"fontFamily"}, {}});
+     o.addMethod("setSystemFixedFont", [this](const std::string &value) { setSystemFixedFont(value); },
+                 {{"fontFamily"}, {}});
++    o.addMethod("setSystemFontWeight", [this](int32_t value) { setSystemFontWeight(value); }, {{"weight"}, {}});
++    o.addMethod("setSystemFixedFontWeight", [this](int32_t value) { setSystemFixedFontWeight(value); }, {{"weight"}, {}});
+     o.addMethod("setSystemFontPointSize", [this](double value) { setSystemFontPointSize(value); },
+                 {{"fontSize"}, {}});
+     o.addMethod("setWallpaper", [this](const std::string &value) { setWallpaper(value); }, {{"path"}, {}});
+@@ -127,6 +129,8 @@
+     o.addProperty("continuousCorners", [this] { return continuousCorners(); });
+     o.addProperty("systemFont", [this] { return systemFont(); });
+     o.addProperty("systemFixedFont", [this] { return systemFixedFont(); });
++    o.addProperty("systemFontWeight", [this] { return int32_t(systemFontWeight()); });
++    o.addProperty("systemFixedFontWeight", [this] { return int32_t(systemFixedFontWeight()); });
+     o.addProperty("systemFontPointSize", [this] { return systemFontPointSize(); });
+     o.addProperty("wallpaper", [this] { return wallpaper(); });
+     o.addProperty("userWallpapers", [this] { return userWallpapers(); });
+@@ -153,6 +157,9 @@
+     o.addSignal("iconThemeChanged", "");
+     o.addSignal("systemFontPointSizeChanged", "");
+     o.addSignal("systemFontChanged", "");
++    o.addSignal("systemFixedFontChanged", "");
++    o.addSignal("systemFontWeightChanged", "");
++    o.addSignal("systemFixedFontWeightChanged", "");
+     return o.publish();
+ }
+
+@@ -283,6 +290,36 @@
+     m_settings.sync();
+
+     updateFontConfig();
++    updateGtk3Config();
++    emitSignal("systemFixedFontChanged");
++}
++
++int ThemeManager::systemFontWeight() const
++{
++    return int(std::clamp<int64_t>(m_settings.intValue("Appearance/FontWeight", 400), 100, 900));
++}
++
++void ThemeManager::setSystemFontWeight(int weight)
++{
++    if (weight < 100 || weight > 900 || weight == systemFontWeight())
++        return;
++    write("FontWeight", weight);
++    updateGtk3Config();
++    emitSignal("systemFontWeightChanged");
++}
++
++int ThemeManager::systemFixedFontWeight() const
++{
++    return int(std::clamp<int64_t>(m_settings.intValue("Appearance/FixedFontWeight", 400), 100, 900));
++}
++
++void ThemeManager::setSystemFixedFontWeight(int weight)
++{
++    if (weight < 100 || weight > 900 || weight == systemFixedFontWeight())
++        return;
++    write("FixedFontWeight", weight);
++    updateGtk3Config();
++    emitSignal("systemFixedFontWeightChanged");
+ }
+
+ double ThemeManager::systemFontPointSize()
+@@ -362,6 +399,9 @@
+ {
+     GtkSettings gtk;
+     gtk.fontFamily = systemFont();
++    gtk.fixedFontFamily = systemFixedFont();
++    gtk.fontWeight = systemFontWeight();
++    gtk.fixedFontWeight = systemFixedFontWeight();
+     gtk.fontPointSize = systemFontPointSize();
+
+     const FontConfig font = fontConfig();
+--- a/cutefish-services/application.cpp
++++ b/cutefish-services/application.cpp
+@@ -116,6 +116,8 @@
+         theme.highlight = accents[accent];
+     if (appearance.systemFontPointSize() > 0)
+         theme.fontPointSize = appearance.systemFontPointSize();
++    theme.fontWeight = appearance.systemFontWeight();
++    theme.fixedFontWeight = appearance.systemFixedFontWeight();
+     theme.fontFamily = appearance.systemFont();
+     theme.fixedFontFamily = appearance.systemFixedFont();
+     if (!appearance.iconTheme().empty())
+--- a/cutefish-services/appearance/gtksettings.h
++++ b/cutefish-services/appearance/gtksettings.h
+@@ -6,6 +6,9 @@
+ struct GtkSettings
+ {
+     std::string fontFamily;
++    std::string fixedFontFamily;
++    int fontWeight = 400;
++    int fixedFontWeight = 400;
+     double fontPointSize = 9;
+     // fontconfig's values, as written by writeFontConfig().
+     bool fontAntialias = true;
+--- a/cutefish-services/appearance/gtksettings.cpp
++++ b/cutefish-services/appearance/gtksettings.cpp
+@@ -1,6 +1,7 @@
+ #include "gtksettings.h"
+
+ #include <filesystem>
++#include <algorithm>
+
+ #include "base/file.h"
+ #include "base/paths.h"
+@@ -20,9 +21,18 @@
+     return paths::configHome() + "/gtk-3.0/settings.ini";
+ }
+
++// Pango's font description syntax. An omitted style retains the old regular default.
++static std::string fontDescription(const std::string &family, double size, int weight)
++{
++    static constexpr const char *styles[] = {
++        " Thin", " Ultra-Light", " Light", "", " Medium", " Semi-Bold", " Bold", " Ultra-Bold", " Heavy",
++    };
++    return family + styles[std::clamp((weight + 50) / 100, 1, 9) - 1] + ' ' + number(size, 'g', -1);
++}
++
+ void writeGtkSettings(const GtkSettings &gtk)
+ {
+-    const std::string fontName = gtk.fontFamily + ' ' + number(gtk.fontPointSize, 'g', -1);
++    const std::string fontName = fontDescription(gtk.fontFamily, gtk.fontPointSize, gtk.fontWeight);
+     // No Cutefish GTK theme ships; Adwaita's dark variant is what gtk-theme can switch to.
+     const std::string gtkTheme = gtk.darkMode ? "Adwaita-dark" : "Adwaita";
+     const bool subpixel = gtk.fontAntialias && gtk.fontRgba != "none";
+@@ -53,6 +63,7 @@
+     // changes through GLib's file monitor.
+     gsettings::writeGroup("org/gnome/desktop/interface", {
+             {"font-name", fontName},
++            {"monospace-font-name", fontDescription(gtk.fixedFontFamily, gtk.fontPointSize, gtk.fixedFontWeight)},
+             {"font-antialiasing",
+              std::string(!gtk.fontAntialias ? "none" : subpixel ? "rgba" : "grayscale")},
+             // The schema's nicks are fontconfig's hintstyle constants without "hint".

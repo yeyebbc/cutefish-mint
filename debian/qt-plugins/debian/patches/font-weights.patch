@@ -1,0 +1,104 @@
+Description: Apply saved font weights to Qt platform fonts and refresh them after a settings change.
+Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
+Forwarded: no
+
+--- a/platformtheme/hintsettings.h
++++ b/platformtheme/hintsettings.h
+@@ -24,5 +24,7 @@
+     QString systemFont() const;
+     QString systemFixedFont() const;
+     qreal systemFontPointSize() const;
++    int systemFontWeight() const;
++    int systemFixedFontWeight() const;
+
+     bool darkMode();
+--- a/platformtheme/hintsettings.cpp
++++ b/platformtheme/hintsettings.cpp
+@@ -114,6 +114,16 @@
+                                QStringLiteral("DejaVu Sans Mono"));
+ }
+
++int HintsSettings::systemFontWeight() const
++{
++    return qBound(100, m_settings->value("FontWeight", 400).toInt(), 900);
++}
++
++int HintsSettings::systemFixedFontWeight() const
++{
++    return qBound(100, m_settings->value("FixedFontWeight", 400).toInt(), 900);
++}
++
+ qreal HintsSettings::systemFontPointSize() const
+ {
+     return m_settings->value(s_systemPointFontSize, 9).toDouble();
+@@ -144,10 +154,10 @@
+         const QVariant &newValue = m_values.value(value);
+
+         if (oldValue != newValue) {
+-            if (value == s_systemFontName)
+-                emit systemFontChanged(newValue.toString());
+-            else if (value == s_systemFixedFontName)
+-                emit systemFixedFontChanged(newValue.toString());
++            if (value == s_systemFontName || value == "FontWeight")
++                emit systemFontChanged(systemFont());
++            else if (value == s_systemFixedFontName || value == "FixedFontWeight")
++                emit systemFixedFontChanged(systemFixedFont());
+             else if (value == s_systemPointFontSize)
+                 emit systemFontPointSizeChanged(newValue.toDouble());
+             else if (value == s_darkModeName)
+--- a/platformtheme/platformtheme.cpp
++++ b/platformtheme/platformtheme.cpp
+@@ -105,6 +105,7 @@
+         const QString &fontName = m_hints->systemFixedFont();
+         qreal fontSize = m_hints->systemFontPointSize();
+         static QFont font = QFont(QString());
++        font.setWeight(QFont::Weight(m_hints->systemFixedFontWeight()));
+         font.setFamily(fontName);
+         font.setPointSizeF(fontSize);
+         return &font;
+@@ -113,6 +114,7 @@
+     const QString &fontName = m_hints->systemFont();
+     qreal fontSize = m_hints->systemFontPointSize();
+     static QFont font = QFont(QString());
++    font.setWeight(QFont::Weight(m_hints->systemFontWeight()));
+     font.setFamily(fontName);
+     font.setPointSizeF(fontSize);
+     return &font;
+@@ -133,5 +135,6 @@
+ void PlatformTheme::onFontChanged()
+ {
+     QFont font;
++    font.setWeight(QFont::Weight(m_hints->systemFontWeight()));
+     font.setFamily(m_hints->systemFont());
+     font.setPointSizeF(m_hints->systemFontPointSize());
+--- a/platformtheme/tests/platformtheme_test.cpp
++++ b/platformtheme/tests/platformtheme_test.cpp
+@@ -123,6 +123,7 @@
+     void multipleSelectionSelectsNoSingleFile();
+     void defaultMimeTypeIsAllFiles();
+     void settingsChangeSurvivesAnEarlierSync();
++    void fontWeightsAreIndependentAndReload();
+
+ private:
+     QDBusConnection m_portalBus = QDBusConnection(QString());
+@@ -136,6 +137,20 @@
+     QFile file(directory + "/services.conf");
+     return QDir().mkpath(directory) && file.open(QIODevice::WriteOnly | QIODevice::Truncate)
+         && file.write(contents) == contents.size();
++}
++
++void PlatformThemeTest::fontWeightsAreIndependentAndReload()
++{
++    QVERIFY(writeSettings("[Appearance]\nFontWeight=400\nFixedFontWeight=400\n"));
++    HintsSettings hints;
++    QCoreApplication::processEvents();
++    QSignalSpy general(&hints, &HintsSettings::systemFontChanged);
++    QSignalSpy fixed(&hints, &HintsSettings::systemFixedFontChanged);
++    QVERIFY(writeSettings("[Appearance]\nFontWeight=700\nFixedFontWeight=500\n"));
++    QTRY_COMPARE(hints.systemFontWeight(), 700);
++    QTRY_COMPARE(hints.systemFixedFontWeight(), 500);
++    QTRY_VERIFY(general.count() > 0);
++    QTRY_VERIFY(fixed.count() > 0);
+ }
+
+ void PlatformThemeTest::initTestCase()

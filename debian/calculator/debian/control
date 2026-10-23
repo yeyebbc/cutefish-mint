@@ -10,7 +10,7 @@ Homepage: https://github.com/cutefishos/calculator
 
 Package: cutefish-calculator
 Architecture: any
-Depends: cutefish-toolkit,
+Depends: cutefish-toolkit (>= 1.0~git20261021191855.9e161d0-1+noble2),
          ${misc:Depends},
          ${shlibs:Depends}
 Description: CutefishOS Calculator

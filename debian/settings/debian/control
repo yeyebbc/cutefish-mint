@@ -3,9 +3,12 @@ Section: devel
 Priority: optional
 Maintainer: Reion Wong <reionwong@gmail.com>
 Build-Depends: cmake,
+               libgtest-dev,
+               dbus-daemon,
+               fonts-dejavu-core,
                debhelper-compat (= 13),
-               cutefish-toolkit,
-               cutefish-framework,
+               cutefish-toolkit (>= 1.0~git20261021191855.9e161d0-1+noble2),
+               cutefish-framework (>= 1.0~git20261020142206.c138da6-1+noble2),
                libicu-dev,
                libcrypt-dev,
                libexpat1-dev,
@@ -22,8 +25,8 @@ Homepage: https://github.com/cutefishos/settings
 Package: cutefish-settings
 Architecture: any
 Depends: power-profiles-daemon,
-         cutefish-toolkit,
-         cutefish-framework,
+         cutefish-toolkit (>= 1.0~git20261021191855.9e161d0-1+noble2),
+         cutefish-framework (>= 1.0~git20261020142206.c138da6-1+noble2),
          ${misc:Depends},
          ${shlibs:Depends}
 Description: Cutefish Settings
