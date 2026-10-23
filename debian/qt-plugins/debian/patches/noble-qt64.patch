@@ -1,0 +1,133 @@
+Description: Use Qt 6.4 appearance and Wayland native-resource interfaces on Noble.
+Author: Cutefish Mint packaging contributors
+Forwarded: not-needed
+
+--- a/platformtheme/platformtheme.h
++++ b/platformtheme/platformtheme.h
+@@ -19,7 +19,7 @@
+     ~PlatformTheme() override;
+ 
+     QVariant themeHint(ThemeHint hint) const override;
+-    Qt::ColorScheme colorScheme() const override;
++    QPlatformTheme::Appearance appearance() const override;
+     const QPalette *palette(Palette type = SystemPalette) const override;
+     const QFont *font(Font type) const override;
+ 
+--- a/platformtheme/platformtheme.cpp
++++ b/platformtheme/platformtheme.cpp
+@@ -84,9 +84,9 @@
+     }
+ }
+ 
+-Qt::ColorScheme PlatformTheme::colorScheme() const
++QPlatformTheme::Appearance PlatformTheme::appearance() const
+ {
+-    return m_hints->darkMode() ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;
++    return m_hints->darkMode() ? QPlatformTheme::Appearance::Dark : QPlatformTheme::Appearance::Light;
+ }
+ 
+ const QPalette *PlatformTheme::palette(Palette type) const
+--- a/scrolling/scrollhold.cpp
++++ b/scrolling/scrollhold.cpp
+@@ -6,7 +6,6 @@
+ 
+ #include <QGuiApplication>
+ #include <QWindow>
+-#include <QtGui/qguiapplication_platform.h>
+ #include <qpa/qplatformnativeinterface.h>
+ #include <wayland-client.h>
+ 
+@@ -15,6 +14,14 @@
+ #include <cstring>
+ 
+ namespace Cutefish {
++
++static void *waylandResource(const QByteArray &name)
++{
++    if (!qGuiApp || !QGuiApplication::platformName().startsWith(QLatin1String("wayland")))
++        return nullptr;
++    auto *native = qGuiApp->platformNativeInterface();
++    return native ? native->nativeResourceForIntegration(name) : nullptr;
++}
+ 
+ static wl_surface *surfaceOf(QWindow *window)
+ {
+@@ -29,18 +36,18 @@
+ void ScrollHold::watch()
+ {
+     static ScrollHold *hold = nullptr;
+-    if (!hold && qGuiApp && qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>())
++    if (!hold && waylandResource(QByteArrayLiteral("wl_display")))
+         hold = new ScrollHold(qGuiApp);
+ }
+ 
+ ScrollHold::ScrollHold(QObject *parent)
+     : QObject(parent)
+ {
+-    auto *native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
+-    m_registry = wl_display_get_registry(native->display());
++    auto *display = static_cast<wl_display *>(waylandResource(QByteArrayLiteral("wl_display")));
++    m_registry = wl_display_get_registry(display);
+     static const wl_registry_listener listener = {global, globalRemove};
+     wl_registry_add_listener(m_registry, &listener, this);
+-    wl_display_flush(native->display());
++    wl_display_flush(display);
+     // Qt replaces its wl_pointer when the seat loses and regains one.
+     connect(qGuiApp, &QGuiApplication::focusWindowChanged, this, &ScrollHold::updatePointer);
+ }
+@@ -84,8 +91,7 @@
+ 
+ void ScrollHold::updatePointer()
+ {
+-    auto *native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
+-    wl_pointer *pointer = native ? native->pointer() : nullptr;
++    auto *pointer = static_cast<wl_pointer *>(waylandResource(QByteArrayLiteral("wl_pointer")));
+     if (!m_gestures || pointer == m_pointer)
+         return;
+ 
+--- a/platformtheme/waylandexport.cpp
++++ b/platformtheme/waylandexport.cpp
+@@ -5,8 +5,7 @@
+ #ifdef CUTEFISH_PLATFORMTHEME_WAYLAND
+ 
+ #include <QGuiApplication>
+-#include <qguiapplication_platform.h>
+-#include <qpa/qplatformwindow_p.h>
++#include <qpa/qplatformnativeinterface.h>
+ 
+ #include <wayland-client-core.h>
+ #include <wayland-client-protocol.h>
+@@ -76,12 +75,20 @@
+     if (!window)
+         return QString();
+ 
+-    auto *application = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
+-    auto *native = window->nativeInterface<QNativeInterface::Private::QWaylandWindow>();
+-    if (!application || !native || !native->surface())
++    if (!qGuiApp || !QGuiApplication::platformName().startsWith(QLatin1String("wayland"))
++        || !window->handle())
++        return QString();
++    auto *native = qGuiApp->platformNativeInterface();
++    if (!native)
++        return QString();
++    auto *display = static_cast<wl_display *>(
++            native->nativeResourceForIntegration(QByteArrayLiteral("wl_display")));
++    auto *surface = static_cast<wl_surface *>(
++            native->nativeResourceForWindow(QByteArrayLiteral("surface"), window));
++    if (!display || !surface)
+         return QString();
+ 
+-    m_display = application->display();
++    m_display = display;
+     zxdg_exporter_v2 *exporter = sharedExporter(m_display);
+     if (!exporter)
+         return QString();
+@@ -90,7 +97,7 @@
+     wl_event_queue *queue = wl_display_create_queue(m_display);
+     auto *wrapper = static_cast<zxdg_exporter_v2 *>(wl_proxy_create_wrapper(exporter));
+     wl_proxy_set_queue(reinterpret_cast<wl_proxy *>(wrapper), queue);
+-    m_exported = zxdg_exporter_v2_export_toplevel(wrapper, native->surface());
++    m_exported = zxdg_exporter_v2_export_toplevel(wrapper, surface);
+     wl_proxy_wrapper_destroy(wrapper);
+ 
+     m_handle.clear();

@@ -1,0 +1,18 @@
+Description: Define the Bcachefs filesystem identifier when old UAPI headers omit it.
+Origin: https://github.com/torvalds/linux/blob/v6.12/include/uapi/linux/magic.h
+Forwarded: not-needed
+
+--- a/files/task.cpp
++++ b/files/task.cpp
+@@ -6,6 +6,11 @@
+ #include <algorithm>
+ #include <cerrno>
+ #include <linux/magic.h>
++
++// Linux UAPI filesystem identifier; absent from Noble's original headers.
++#ifndef BCACHEFS_SUPER_MAGIC
++#define BCACHEFS_SUPER_MAGIC 0xca451a4e
++#endif
+ #include <sys/stat.h>
+ #include <sys/statvfs.h>
+ #include <sys/vfs.h>

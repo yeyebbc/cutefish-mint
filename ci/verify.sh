@@ -5,7 +5,7 @@ export DEBIAN_FRONTEND=noninteractive
 printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
 chmod +x /usr/sbin/policy-rc.d
 /work/packaging/ci/wayland.sh
-apt-get install -y --no-install-recommends lightdm cinnamon-session dbus-x11
+apt-get install -y --no-install-recommends lightdm cinnamon-session dbus-x11 wayland-utils
 manager_before=$(readlink -f /etc/systemd/system/display-manager.service || true)
 session_before=$(readlink -f /etc/alternatives/x-session-manager || true)
 cd /work/bundle
@@ -29,4 +29,5 @@ for binary in /usr/bin/cutefish-* /usr/lib/x86_64-linux-gnu/libcutefish*.so*; do
   fi
 done
 dpkg-query -W -f='${Package} ${Version}\n' 'cutefish-*' 'xdg-desktop-portal-cutefish'
-echo 'Clean Ubuntu 24.04 installation, runtime linking, and existing login/session preservation passed.'
+dbus-run-session -- bash /work/packaging/ci/smoke.sh
+echo 'Clean Ubuntu 24.04 installation, runtime linking, headless compositor, and existing login/session preservation passed.'

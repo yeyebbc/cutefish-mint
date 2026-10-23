@@ -40,8 +40,9 @@ The existing login manager and X11 default session are retained. The standalone
 Cutefish display manager, disk/OS installer, and optional agent-control server
 are not included. Desktop selection is provided by the existing login screen.
 
-Noble adaptations include JPEG XL 0.7 API support and the appropriate runtime
-package name. Sources are pinned in `sources.lock`; source patches live beside
+Noble adaptations include JPEG XL 0.7 API support, Qt 6.4 native Wayland and
+appearance interfaces, and the appropriate runtime package names.
+Sources are pinned in `sources.lock`; source patches live beside
 the Debian packaging. Each release includes Debian source packages and build
 metadata, preserving upstream copyright and licensing information.
 
@@ -50,8 +51,9 @@ metadata, preserving upstream copyright and licensing information.
 The workflow builds inside Ubuntu 24.04 containers, builds the desktop components
 after the shared foundation, then installs the complete bundle in a fresh
 Ubuntu 24.04 container with LightDM and Cinnamon session packages. It checks
-dependencies, missing shared libraries, session files, and preservation of the
-login manager and default session. A release is created only after these checks
+dependencies, missing shared libraries, session files, a real Wayland client
+connecting to the headless compositor, and preservation of the login manager
+and default session. A release is created only after these checks
 pass. Existing component tests run where enabled by upstream packaging.
 
 This is a prerelease port. CI cannot establish that a real GPU, monitor layout,
