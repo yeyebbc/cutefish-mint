@@ -158,3 +158,32 @@ Last-Update: 2026-10-23
      surface->setPosition({x, 0});
      return surface;
  }
+--- a/src/xwayland/xwm.cpp
++++ b/src/xwayland/xwm.cpp
+@@ -30,6 +30,7 @@
+ #include "base/event_loop.h"
+ #include "base/logging.h"
+ #include "base/strings.h"
++#include "compositor/compositor.h"
+ #include "compositor/surface.h"
+ #include "core/main_loop.h"
+ #include "dnd_bridge.h"
+@@ -1321,6 +1322,8 @@
+     // EWMH requires the window type before mapping; keep its role until withdrawal.
+     w.roleLocked = true;
+     if (w.overrideRedirect || w.popup) {
++        // These X11 roles have no Window to attach the surface for them.
++        w.surface->reparentNode(m_manager->compositor()->surfaceContainer());
+         w.surface->setPosition(w.geometry.topLeft());
+         w.surface->setHidden(false);
+         auto owner = m_windows.find(w.transient);
+--- a/tests/xwayland_test.cpp
++++ b/tests/xwayland_test.cpp
+@@ -2540,6 +2540,7 @@
+         EXPECT_EQ(manager->windows().size(), 1u);
+         EXPECT_EQ(manager->windowForSurface(popupSurface), window);
+         EXPECT_EQ(popupSurface->position(), popupRect.topLeft());
++        EXPECT_EQ(compositor->surfaceContainer(), popupSurface->node()->parent());
+         window->minimize();
+         EXPECT_TRUE(popupSurface->isHidden());
+         window->restore();

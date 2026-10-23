@@ -14,6 +14,7 @@ override_dh_auto_configure:
 
 override_dh_auto_test:
 	dh_auto_configure -- -DBUILD_TESTING=ON -DCUTEFISH_ENABLE_XWAYLAND=ON
-	cmake --build obj-$(DEB_HOST_GNU_TYPE) --parallel 4 --target $(cursor_tests)
+	cmake --build obj-$(DEB_HOST_GNU_TYPE) --parallel 4 --target $(cursor_tests) xwayland_test
 	ctest --test-dir obj-$(DEB_HOST_GNU_TYPE) --output-on-failure --timeout 90 -R '^(surface_test|wayland_protocol_test|seat_protocol_test|xdg_shell_protocol_test|sub_surface_test|subsurface_output_protocol_test|dnd_protocol_test|cursor_test|input_method_protocol_test)$$'
+	LIBGL_ALWAYS_SOFTWARE=1 EGL_PLATFORM=surfaceless timeout 90 obj-$(DEB_HOST_GNU_TYPE)/tests/xwayland_test --gtest_filter='SurfaceAssociation.*:XwaylandProtocolTest.*:XwaylandTest.RealSoftwareRenderingAndInput'
 	dh_auto_configure -- -DBUILD_TESTING=OFF -DCUTEFISH_ENABLE_XWAYLAND=ON
