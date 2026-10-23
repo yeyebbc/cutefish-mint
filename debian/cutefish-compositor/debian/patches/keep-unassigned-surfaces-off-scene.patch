@@ -1,0 +1,160 @@
+Description: Keep unassigned Wayland surfaces off the desktop scene
+ A client may upload a cursor image before it has pointer focus. Its surface
+ must not be drawn at the compositor's fallback window position while waiting
+ for a valid set_cursor request. Role owners already attach surfaces to their
+ appropriate scene containers. Exercise rendering, input, rejected requests,
+ cursor movement, hiding and recommitting through a real Wayland connection.
+Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
+Forwarded: no
+Last-Update: 2026-10-23
+
+--- a/src/wayland/protocols/wl_compositor.cpp
++++ b/src/wayland/protocols/wl_compositor.cpp
+@@ -261,6 +261,11 @@
+ {
+     auto* compositor = getUserDataAs<compositor::Compositor>(resource);
+     std::unique_ptr<compositor::Surface> surface = compositor->createSurface();
++    // A client can commit a cursor image before set_cursor is accepted (or
++    // without ever using it). Keep unassigned surfaces off the scene so their
++    // buffers cannot appear as stationary desktop content or receive input.
++    // The window, subsurface, cursor and drag roles attach their own nodes.
++    surface->reparentNode(nullptr);
+     if (auto* server = Server::serverForDisplay(wl_client_get_display(client))) {
+         if (server->clientSurfacesInitiallyHidden(client))
+             surface->setHidden(true);
+--- a/tests/seat_protocol_test.cpp
++++ b/tests/seat_protocol_test.cpp
+@@ -32,6 +32,7 @@
+ #include "compositor/compositor.h"
+ #include "compositor/surface.h"
+ #include "cursor-shape-v1-client-protocol.h"
++#include "fake_renderer.h"
+ #include "input/input_manager.h"
+ #include "input/seat.h"
+ #include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
+@@ -235,7 +236,7 @@
+         sync();
+     }
+
+-    // A mapped surface of `size`, kept alive for the lifetime of the client.
++    // A buffered surface of `size`, kept alive for the lifetime of the client.
+     wl_surface* makeSurface(const base::Size& size)
+     {
+         const int stride = size.width() * 4;
+@@ -660,10 +661,12 @@
+         EXPECT_TRUE(windowManager.windows().empty());
+     }
+
+-    // The compositor cascades new surfaces; the tests want known positions.
++    // Stand in for a shell role when testing input without xdg-shell: attach
++    // only the intended input target, never an unused cursor image.
+     void place(size_t index, const base::Point& position)
+     {
+         ASSERT_LT(index, compositor.surfaces().size());
++        compositor.surfaces()[index]->reparentNode(surfaceContainer);
+         compositor.surfaces()[index]->setPosition(position);
+     }
+
+@@ -979,6 +982,71 @@
+     });
+ }
+
++TEST_F(SeatProtocolTest, UnassignedCursorStaysOffSceneUntilAccepted)
++{
++    run([&](Client& c) {
++        c.getPointer();
++        wl_surface* target = c.makeSurface({200, 200});
++        wl_surface* cursor = c.makeSurface({24, 24});
++        c.sync();
++
++        // Check the renderer, not just role bookkeeping: the old compositor
++        // drew this buffer at its cascade position before set_cursor.
++        auto expectCursorDrawn = [&](bool drawn) {
++            testsupport::FakeRenderer renderer;
++            compositor.updateTextures(renderer);
++            auto* texture = compositor.surfaces()[1]->node()->texture();
++            ASSERT_NE(nullptr, texture);
++            scene.root()->render(renderer);
++            EXPECT_EQ(drawn ? 1 : 0,
++                      std::count_if(renderer.calls.begin(), renderer.calls.end(),
++                                    [texture](const auto& call) { return call.texture == texture; }));
++        };
++
++        check([&] {
++            EXPECT_EQ(nullptr, compositor.surfaces()[0]->node()->parent());
++            EXPECT_EQ(nullptr, compositor.surfaces()[1]->node()->parent());
++            expectCursorDrawn(false);
++            seat.onPointerMotion(at(1), {50, 50});
++        });
++        c.sync();
++        EXPECT_TRUE(c.observed.pointerEvents.empty());
++
++        // A rejected request must not make the buffered image visible.
++        wl_pointer_set_cursor(c.pointer, 0, cursor, 6, 8);
++        c.sync();
++        check([&] {
++            EXPECT_FALSE(seat.hasClientCursorRequest());
++            expectCursorDrawn(false);
++            place(0, {0, 0});
++            seat.onPointerMotion(at(2), {50, 50});
++        });
++        c.sync();
++        // This point is also inside the unused image's old cascade rectangle.
++        EXPECT_EQ(target, c.observed.enterSurface);
++        ASSERT_NE(0u, c.observed.enterSerial);
++
++        wl_pointer_set_cursor(c.pointer, c.observed.enterSerial, cursor, 6, 8);
++        c.sync();
++        check([&] {
++            EXPECT_EQ(cursorContainer, compositor.surfaces()[1]->node()->parent());
++            EXPECT_EQ(base::Point(44, 42), compositor.surfaces()[1]->position());
++            expectCursorDrawn(true);
++            seat.onPointerMotion(at(3), {100, 100});
++            EXPECT_EQ(base::Point(94, 92), compositor.surfaces()[1]->position());
++            expectCursorDrawn(true);
++        });
++
++        wl_pointer_set_cursor(c.pointer, c.observed.enterSerial, nullptr, 0, 0);
++        wl_surface_commit(cursor);
++        c.sync();
++        check([&] {
++            EXPECT_EQ(nullptr, compositor.surfaces()[1]->node()->parent());
++            expectCursorDrawn(false);
++        });
++    });
++}
++
+ TEST_F(SeatProtocolTest, TheCursorSurfaceIsPositionedByItsHotspot)
+ {
+     run([&](Client& c) {
+@@ -988,9 +1056,7 @@
+         c.sync();
+         check([&] {
+             place(0, base::Point(0, 0));
+-            // Out of the way: an unassigned cursor surface is an ordinary
+-            // surface, and the compositor cascades new ones near the origin.
+-            place(1, base::Point(600, 400));
++            EXPECT_EQ(nullptr, compositor.surfaces()[1]->node()->parent());
+             seat.onPointerMotion(at(1), base::PointF(50, 60));
+         });
+         c.sync();
+@@ -1205,7 +1271,7 @@
+         c.sync();
+         check([&] {
+             place(0, {0, 0});
+-            place(1, {600, 400});
++            EXPECT_EQ(nullptr, compositor.surfaces()[1]->node()->parent());
+         });
+         wp_cursor_shape_device_v1_set_shape(device, 0, WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT);
+         c.sync();
+--- a/tests/dnd_protocol_test.cpp
++++ b/tests/dnd_protocol_test.cpp
+@@ -28,6 +28,8 @@
+                                nullptr);
+     surface->attach(buffer, {});
+     surface->commit();
++    // This fixture stands in for a shell role when mapping its drag targets.
++    surface->reparentNode(h.scene.root());
+     surface->setPosition({x, 0});
+     return surface;
+ }

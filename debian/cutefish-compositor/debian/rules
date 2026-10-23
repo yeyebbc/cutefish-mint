@@ -1,11 +1,19 @@
 #!/usr/bin/make -f
 
+include /usr/share/dpkg/architecture.mk
+
+cursor_tests = surface_test wayland_protocol_test seat_protocol_test xdg_shell_protocol_test sub_surface_test subsurface_output_protocol_test dnd_protocol_test cursor_test input_method_protocol_test
+
 %:
 	dh $@
 
-# The test suite needs GoogleTest and GPU pixel tests; it runs in development
-# builds, not in the package build.
+# Build the desktop normally, then explicitly build the protocol/render tests
+# that do not need a real GPU. Leave the development-only GPU suite disabled.
 override_dh_auto_configure:
 	dh_auto_configure -- -DBUILD_TESTING=OFF -DCUTEFISH_ENABLE_XWAYLAND=ON
 
 override_dh_auto_test:
+	dh_auto_configure -- -DBUILD_TESTING=ON -DCUTEFISH_ENABLE_XWAYLAND=ON
+	cmake --build obj-$(DEB_HOST_GNU_TYPE) --parallel 4 --target $(cursor_tests)
+	ctest --test-dir obj-$(DEB_HOST_GNU_TYPE) --output-on-failure --timeout 90 -R '^(surface_test|wayland_protocol_test|seat_protocol_test|xdg_shell_protocol_test|sub_surface_test|subsurface_output_protocol_test|dnd_protocol_test|cursor_test|input_method_protocol_test)$$'
+	dh_auto_configure -- -DBUILD_TESTING=OFF -DCUTEFISH_ENABLE_XWAYLAND=ON

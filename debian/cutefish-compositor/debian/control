@@ -4,6 +4,8 @@ Priority: optional
 Maintainer: Reion Wong <reionwong@gmail.com>
 Build-Depends: cmake (>= 3.22),
                debhelper-compat (= 13),
+               libgtest-dev,
+               dbus-daemon,
                pkg-config,
                cutefish-toolkit,
                cutefish-framework,
