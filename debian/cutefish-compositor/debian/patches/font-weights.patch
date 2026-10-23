@@ -2,6 +2,16 @@ Description: Follow saved font weights and live appearance changes in the deskto
 Author: yeyebbc <19569343+yeyebbc@users.noreply.github.com>
 Forwarded: no
 
+--- a/src/shell/components.cmake
++++ b/src/shell/components.cmake
+@@ -4,6 +4,7 @@
+ # The desktop background: the shared wallpaper decode, one node per output
+ # and the status bar's backdrop rules.
+ find_package(CutefishClients REQUIRED COMPONENTS appearance)
++target_link_libraries(cutefish-shell PRIVATE Cutefish::AppearanceClient)
+ add_library(cutefish-shell-wallpaper STATIC
+     src/shell/wallpaper/bar_backdrop.cpp
+     src/shell/wallpaper/bar_backdrop.h
 --- a/src/shell/shell.cpp
 +++ b/src/shell/shell.cpp
 @@ -11,8 +11,9 @@
